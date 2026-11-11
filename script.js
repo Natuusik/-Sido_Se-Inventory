@@ -22,42 +22,56 @@ catch (e) {
     console.error('Supabase init error:', e);
 }
 let allProducts = [];
-const CATEGORY_ORDER = ['Endpaper', 'BXT', 'Lazer/Inkjet', 'Casing-in', 'Other'];
+const CATEGORY_ORDER = ['Endpaper', 'Tara', 'BXT', 'Lazer/Inkjet', 'Casing-in', 'Other', 'Consumables'];
 const CATEGORY_TITLES = {
     'Endpaper': '📄 Endpaper',
+    'Tara': '📦 Tara',
     'BXT': '📦 BXT',
     'Lazer/Inkjet': '🖨️ Lazer/Inkjet',
     'Casing-in': '📚 Casing-in',
-    'Other': '📌 Other'
+    'Other': '📌 Other',
+    'Consumables': '🛠️ Consumables'
 };
 const CATEGORY_STYLES = {
     'Endpaper': { bg: 'bg-blue-50/50', border: 'border-blue-200', text: 'text-blue-900', badgeBg: 'bg-blue-100 text-blue-800' },
+    'Tara': { bg: 'bg-orange-50/50', border: 'border-orange-200', text: 'text-orange-900', badgeBg: 'bg-orange-100 text-orange-800' },
     'BXT': { bg: 'bg-red-50/50', border: 'border-red-200', text: 'text-red-900', badgeBg: 'bg-red-100 text-red-800' },
     'Lazer/Inkjet': { bg: 'bg-purple-50/50', border: 'border-purple-200', text: 'text-purple-900', badgeBg: 'bg-purple-100 text-purple-800' },
     'Casing-in': { bg: 'bg-yellow-50/50', border: 'border-yellow-200', text: 'text-yellow-900', badgeBg: 'bg-yellow-100 text-yellow-800' },
-    'Other': { bg: 'bg-stone-50/50', border: 'border-stone-200', text: 'text-stone-900', badgeBg: 'bg-stone-100 text-stone-800' }
+    'Other': { bg: 'bg-stone-50/50', border: 'border-stone-200', text: 'text-stone-900', badgeBg: 'bg-stone-100 text-stone-800' },
+    'Consumables': { bg: 'bg-emerald-50/50', border: 'border-emerald-200', text: 'text-emerald-900', badgeBg: 'bg-emerald-100 text-emerald-800' }
 };
 function formatNumber(num) {
     if (num === null || num === undefined)
         return '0';
     return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
-// Открытие для создания
+function getFormattedTimestamp() {
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    return `${day}.${month}.${year} ${hours}:${minutes}`;
+}
 function openAddModal() {
     const form = document.getElementById('product-form');
     const editId = document.getElementById('edit-product-id');
     const title = document.getElementById('modal-title');
     const modal = document.getElementById('add-modal');
+    const updatedAtSpan = document.getElementById('modal-updated-at');
     if (form)
         form.reset();
     if (editId)
         editId.value = '';
     if (title)
         title.textContent = '📦 Add New Product';
+    if (updatedAtSpan)
+        updatedAtSpan.textContent = 'Новый товар (дата создастся при сохранении)';
     if (modal)
         modal.classList.remove('hidden');
 }
-// Открытие для редактирования
 function openEditModal(id) {
     var _a, _b;
     const item = allProducts.find(p => String(p.id) === String(id) || String(p.product_id) === String(id));
@@ -72,10 +86,13 @@ function openEditModal(id) {
     document.getElementById('product-quantity').value = (_a = item.quantity) !== null && _a !== void 0 ? _a : 0;
     document.getElementById('product-unit').value = item.unit || 'pcs';
     document.getElementById('product-min-stock').value = (_b = item.min_stock) !== null && _b !== void 0 ? _b : 5;
+    const updatedAtSpan = document.getElementById('modal-updated-at');
+    if (updatedAtSpan) {
+        updatedAtSpan.textContent = item.updated_at ? `Изменен: ${item.updated_at}` : 'Дата не указана';
+    }
     document.getElementById('modal-title').textContent = '✏️ Edit Product';
     document.getElementById('add-modal').classList.remove('hidden');
 }
-// Закрытие модалки
 function closeModal() {
     const modal = document.getElementById('add-modal');
     const form = document.getElementById('product-form');
@@ -84,7 +101,6 @@ function closeModal() {
     if (form)
         form.reset();
 }
-// Загрузка данных
 function loadInventory() {
     return __awaiter(this, void 0, void 0, function* () {
         if (!supabaseClient)
@@ -101,7 +117,6 @@ function loadInventory() {
         renderInventory(allProducts);
     });
 }
-// Вспомогательная функция сортировки по вашему порядку категорий
 function getSortedCategoriesMap(items) {
     const map = {};
     items.forEach(item => {
@@ -123,7 +138,6 @@ function getSortedCategoriesMap(items) {
     });
     return { map, sortedKeys };
 }
-// Рендеринг таблицы на экране
 function renderInventory(items) {
     const container = document.getElementById('blocks-container');
     if (!container)
@@ -147,45 +161,47 @@ function renderInventory(items) {
           </span>
         </div>
 
-        <div class="overflow-x-auto">
+<div class="overflow-x-auto">
           <table class="w-full text-left border-collapse">
             <thead>
               <tr class="border-b border-stone-100 text-stone-400 text-xs uppercase tracking-wider">
+                <th class="p-4 font-semibold w-10 text-center">⋮⋮</th>
                 <th class="p-4 font-semibold w-12 text-center border-r border-stone-100">No.</th>
-                <th class="p-4 font-semibold border-r border-stone-100">Название</th>
-                <th class="p-4 font-semibold w-32 border-r border-stone-100">Размер</th>
-                <th class="p-4 font-semibold w-28 text-right border-r border-stone-100">Количество</th>
-                <th class="p-4 font-semibold w-20 border-r border-stone-100">Ед.</th>
+                <th class="p-4 font-semibold border-r border-stone-100">Name</th>
+                <th class="p-4 font-semibold w-32 border-r border-stone-100">Size</th>
+                <th class="p-4 font-semibold w-28 text-right border-r border-stone-100">Quantity</th>
+                <th class="p-4 font-semibold w-28 border-r border-stone-100">Unit</th>
                 <th class="p-4 font-semibold text-right w-36">Actions</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-stone-100 text-sm">
+            <tbody class="divide-y divide-stone-100 text-sm sortable-tbody">
     `;
         categoryItems.forEach(item => {
             const itemId = item.id !== undefined ? item.id : item.product_id;
             const unit = item.unit || 'pcs';
             const isLowStock = !!(item.min_stock !== null && unit === 'pcs' && item.quantity <= item.min_stock);
             const stockTextColor = isLowStock ? 'text-red-600 font-bold' : 'text-stone-900 font-bold';
-            let actionButtons = '';
-            if (unit === 'pcs') {
-                actionButtons = `
-          <div class="inline-flex rounded-xl overflow-hidden border border-stone-200">
-            <button type="button" data-action="dec" data-id="${itemId}" class="bg-stone-50 hover:bg-amber-100 text-amber-700 px-2 py-1 text-xs font-semibold border-r border-stone-200 cursor-pointer">-1</button>
-            <button type="button" data-action="inc" data-id="${itemId}" class="bg-stone-50 hover:bg-emerald-100 text-emerald-700 px-2 py-1 text-xs font-semibold cursor-pointer">+1</button>
-          </div>
-        `;
-            }
+            // Кнопки изменения (+ / -) для pcs и cm
+            let actionButtons = `
+        <div class="inline-flex rounded-xl overflow-hidden border border-stone-200">
+          <button type="button" data-action="dec" data-id="${itemId}" class="bg-stone-50 hover:bg-amber-100 text-amber-700 px-2 py-1 text-xs font-semibold border-r border-stone-200 cursor-pointer">-</button>
+          <button type="button" data-action="inc" data-id="${itemId}" class="bg-stone-50 hover:bg-emerald-100 text-emerald-700 px-2 py-1 text-xs font-semibold cursor-pointer">+</button>
+        </div>
+      `;
             htmlOutput += `
-        <tr class="hover:bg-stone-50/80 transition-colors border-b border-stone-100">
+        <tr draggable="true" data-id="${itemId}" class="hover:bg-stone-50/80 transition-colors border-b border-stone-100 cursor-grab active:cursor-grabbing">
+          <td class="p-4 text-center text-stone-300 hover:text-stone-600 select-none">⋮⋮</td>
           <td class="p-4 font-bold text-stone-400 w-12 text-center border-r border-stone-100">${globalIndex++}</td>
-          <td class="p-4 font-bold text-stone-900 border-r border-stone-100">${item.name}</td>
+          <td class="p-4 font-bold text-stone-900 border-r border-stone-100">
+            ${item.name}
+          </td>
           <td class="p-4 text-stone-700 font-medium w-32 truncate border-r border-stone-100">${item.size || '—'}</td>
           <td class="p-4 w-28 text-right border-r border-stone-100">
             <span class="${stockTextColor} text-sm">
               ${formatNumber(item.quantity)} ${isLowStock ? '⚠️' : ''}
             </span>
           </td>
-          <td class="p-4 w-36 border-r border-stone-100">
+          <td class="p-4 w-28 border-r border-stone-100">
             <div class="flex items-center justify-between gap-2">
               <span class="text-stone-500 font-medium text-xs">${unit}</span>
               ${actionButtons}
@@ -210,7 +226,55 @@ function renderInventory(items) {
     `;
     }
     container.innerHTML = htmlOutput;
+    initDragAndDrop();
 }
+// Логика перетаскивания строк мышкой (Drag & Drop)
+function initDragAndDrop() {
+    const tbodies = document.querySelectorAll('.sortable-tbody');
+    tbodies.forEach(tbody => {
+        let draggedRow = null;
+        tbody.addEventListener('dragstart', (e) => {
+            draggedRow = e.target.closest('tr');
+            if (draggedRow) {
+                draggedRow.classList.add('opacity-40', 'bg-blue-50');
+                e.dataTransfer.effectAllowed = 'move';
+            }
+        });
+        tbody.addEventListener('dragend', (e) => {
+            if (draggedRow) {
+                draggedRow.classList.remove('opacity-40', 'bg-blue-50');
+                draggedRow = null;
+            }
+            // Убираем подсветку со всех строк
+            tbody.querySelectorAll('tr').forEach(tr => tr.classList.remove('border-t-2', 'border-blue-500'));
+        });
+        tbody.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            const targetRow = e.target.closest('tr');
+            if (!targetRow || targetRow === draggedRow)
+                return;
+            tbody.querySelectorAll('tr').forEach(tr => tr.classList.remove('border-t-2', 'border-blue-500'));
+            targetRow.classList.add('border-t-2', 'border-blue-500');
+        });
+        tbody.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const targetRow = e.target.closest('tr');
+            if (!targetRow || !draggedRow || targetRow === draggedRow)
+                return;
+            // Меняем строки местами в DOM визуально
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            const draggedIndex = rows.indexOf(draggedRow);
+            const targetIndex = rows.indexOf(targetRow);
+            if (draggedIndex < targetIndex) {
+                tbody.insertBefore(draggedRow, targetRow.nextSibling);
+            }
+            else {
+                tbody.insertBefore(draggedRow, targetRow);
+            }
+        });
+    });
+}
+// Изменение количества (+ / -) с учетом шага (для см можно менять по 1 или добавить логику)
 function updateQty(id, delta) {
     return __awaiter(this, void 0, void 0, function* () {
         if (!supabaseClient)
@@ -218,11 +282,16 @@ function updateQty(id, delta) {
         const item = allProducts.find(p => String(p.id) === String(id) || String(p.product_id) === String(id));
         if (!item)
             return;
-        const newQty = Math.max(0, (item.quantity || 0) + delta);
+        const currentQty = parseFloat(item.quantity) || 0;
+        const newQty = Math.max(0, Number((currentQty + delta).toFixed(2)));
+        const currentTime = getFormattedTimestamp();
         const idField = item.product_id !== undefined ? 'product_id' : 'id';
         const { error } = yield supabaseClient
             .from(TABLE_NAME)
-            .update({ quantity: newQty })
+            .update({
+            quantity: newQty,
+            updated_at: currentTime
+        })
             .eq(idField, id);
         if (!error)
             loadInventory();
@@ -246,7 +315,6 @@ function deleteProduct(id) {
             loadInventory();
     });
 }
-// Привязка событий при загрузке страницы
 document.addEventListener('DOMContentLoaded', () => {
     const dateEl = document.getElementById('current-date');
     if (dateEl) {
@@ -254,22 +322,39 @@ document.addEventListener('DOMContentLoaded', () => {
         dateEl.textContent = `📅 ${now.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}`;
     }
     loadInventory();
-    // Открытие модалки добавления
     const openBtn = document.getElementById('open-modal-btn');
-    if (openBtn) {
+    if (openBtn)
         openBtn.addEventListener('click', openAddModal);
-    }
-    // Закрытие по крестику
     const closeBtn = document.getElementById('close-modal-btn');
-    if (closeBtn) {
+    if (closeBtn)
         closeBtn.addEventListener('click', closeModal);
-    }
-    // Закрытие по кнопке Cancel
     const cancelBtn = document.getElementById('cancel-modal-btn');
-    if (cancelBtn) {
+    if (cancelBtn)
         cancelBtn.addEventListener('click', closeModal);
+    const refreshDateBtn = document.getElementById('refresh-date-btn');
+    if (refreshDateBtn) {
+        refreshDateBtn.addEventListener('click', () => {
+            const nowStr = getFormattedTimestamp();
+            document.getElementById('modal-updated-at').textContent = `🕒 Новая дата (сохраните форму): ${nowStr}`;
+            document.getElementById('product-form').dataset.forcedTimestamp = nowStr;
+        });
     }
-    // Закрытие по клику на темный фон
+    const globalRefreshBtn = document.getElementById('global-refresh-btn');
+    const lastUpdateDisplay = document.getElementById('last-update-display');
+    const savedLastUpdate = localStorage.getItem('warehouse_last_refresh');
+    if (savedLastUpdate && lastUpdateDisplay) {
+        lastUpdateDisplay.textContent = `Updated: ${savedLastUpdate}`;
+    }
+    if (globalRefreshBtn) {
+        globalRefreshBtn.addEventListener('click', () => {
+            const nowStr = getFormattedTimestamp();
+            if (lastUpdateDisplay) {
+                lastUpdateDisplay.textContent = `Updated: ${nowStr}`;
+            }
+            localStorage.setItem('warehouse_last_refresh', nowStr);
+            loadInventory();
+        });
+    }
     const modal = document.getElementById('add-modal');
     if (modal) {
         modal.addEventListener('click', (e) => {
@@ -277,12 +362,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 closeModal();
         });
     }
-    // Закрытие по клавише Escape
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape')
             closeModal();
     });
-    // Экспорт в Excel (с сохранением вашего порядка категорий и нумерации)
     const exportBtn = document.getElementById('export-excel-btn');
     if (exportBtn) {
         exportBtn.addEventListener('click', () => {
@@ -290,9 +373,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert('Нет данных для экспорта!');
                 return;
             }
-            // Получаем данные строго в отсортированном по категориям виде
             const { map, sortedKeys } = getSortedCategoriesMap(allProducts);
-            let csvContent = "\uFEFFNo;Название;Категория;Размер;Количество;Ед. изм.;Мин. остаток\n";
+            let csvContent = "\uFEFFNo;Название;Категория;Размер;Количество;Ед. изм.;Мин. остаток;Дата обновления\n";
             let globalIndex = 1;
             for (const catKey of sortedKeys) {
                 const categoryItems = map[catKey];
@@ -305,7 +387,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         `"${(item.size || '').replace(/"/g, '""')}"`,
                         (_a = item.quantity) !== null && _a !== void 0 ? _a : 0,
                         `"${(item.unit || 'pcs')}"`,
-                        (_b = item.min_stock) !== null && _b !== void 0 ? _b : 5
+                        (_b = item.min_stock) !== null && _b !== void 0 ? _b : 5,
+                        `"${(item.updated_at || '')}"`
                     ];
                     csvContent += row.join(";") + "\n";
                 });
@@ -320,7 +403,6 @@ document.addEventListener('DOMContentLoaded', () => {
             document.body.removeChild(link);
         });
     }
-    // Делегирование кликов по таблице
     const container = document.getElementById('blocks-container');
     if (container) {
         container.addEventListener('click', (e) => {
@@ -341,7 +423,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateQty(id, -1);
         });
     }
-    // Поиск
     const searchInput = document.getElementById('search-input');
     if (searchInput) {
         searchInput.addEventListener('input', (e) => {
@@ -355,7 +436,6 @@ document.addEventListener('DOMContentLoaded', () => {
             renderInventory(filtered);
         });
     }
-    // Сохранение формы
     const form = document.getElementById('product-form');
     if (form) {
         form.addEventListener('submit', (e) => __awaiter(void 0, void 0, void 0, function* () {
@@ -363,14 +443,17 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!supabaseClient)
                 return;
             const editId = document.getElementById('edit-product-id').value;
+            const forcedTime = form.dataset.forcedTimestamp;
             const productData = {
                 name: document.getElementById('product-name').value,
                 category: document.getElementById('product-category').value,
                 size: document.getElementById('product-size').value,
-                quantity: parseFloat(document.getElementById('product-quantity').value) || 0,
+                quantity: parseFloat(document.getElementById('product-quantity').value.replace(',', '.')) || 0,
                 unit: document.getElementById('product-unit').value,
-                min_stock: parseFloat(document.getElementById('product-min-stock').value) || 0
+                min_stock: parseFloat(document.getElementById('product-min-stock').value) || 0,
+                updated_at: forcedTime || getFormattedTimestamp()
             };
+            delete form.dataset.forcedTimestamp;
             if (editId) {
                 const item = allProducts.find(p => String(p.id) === String(editId) || String(p.product_id) === String(editId));
                 const idField = item && item.product_id !== undefined ? 'product_id' : 'id';
