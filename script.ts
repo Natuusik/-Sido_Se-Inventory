@@ -242,27 +242,33 @@ function renderInventory(items) {
 }
 
 // Функции перемещения строк стрелочками в своей категории
+// Надежное перемещение ровно на 1 позицию вверх
 (window as any).moveItemUp = async function(id) {
   const item = allProducts.find(p => String(p.id) === String(id) || String(p.product_id) === String(id));
   if (!item) return;
 
   const cat = item.category || 'Other';
+  // Получаем все элементы категории, отсортированные по их текущему порядку
   const categoryItems = allProducts
     .filter(p => (p.category || 'Other') === cat)
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 
   const index = categoryItems.findIndex(p => String(p.id) === String(id) || String(p.product_id) === String(id));
-  if (index <= 0) return; // Уже на самом верху
+  if (index <= 0) return; // Уже на самом верху, выше некуда
 
-  // Меняем местами sort_order с предыдущим элементом
-  const prevItem = categoryItems[index - 1];
-  const tempOrder = item.sort_order ?? index;
-  item.sort_order = prevItem.sort_order ?? (index - 1);
-  prevItem.sort_order = tempOrder;
+  // Вырезаем элемент с текущей позиции и вставляем на позицию выше (index - 1)
+  categoryItems.splice(index, 1);
+  categoryItems.splice(index - 1, 0, item);
 
-  await saveNewOrderToSupabase([item, prevItem]);
+  // Принудительно присваиваем абсолютно всем элементам категории чистые индексы 0, 1, 2, 3...
+  categoryItems.forEach((p, idx) => {
+    p.sort_order = idx;
+  });
+
+  await saveAllCategoryOrder(categoryItems);
 };
 
+// Надежное перемещение ровно на 1 позицию вниз
 (window as any).moveItemDown = async function(id) {
   const item = allProducts.find(p => String(p.id) === String(id) || String(p.product_id) === String(id));
   if (!item) return;
@@ -273,22 +279,26 @@ function renderInventory(items) {
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 
   const index = categoryItems.findIndex(p => String(p.id) === String(id) || String(p.product_id) === String(id));
-  if (index === -1 || index >= categoryItems.length - 1) return; // Уже внизу
+  if (index === -1 || index >= categoryItems.length - 1) return; // Уже в самом низу
 
-  // Меняем местами sort_order со следующим элементом
-  const nextItem = categoryItems[index + 1];
-  const tempOrder = item.sort_order ?? index;
-  item.sort_order = nextItem.sort_order ?? (index + 1);
-  nextItem.sort_order = tempOrder;
+  // Вырезаем элемент и вставляем на позицию ниже (index + 1)
+  categoryItems.splice(index, 1);
+  categoryItems.splice(index + 1, 0, item);
 
-  await saveNewOrderToSupabase([item, nextItem]);
+  // Присваиваем чистые последовательные индексы 0, 1, 2, 3...
+  categoryItems.forEach((p, idx) => {
+    p.sort_order = idx;
+  });
+
+  await saveAllCategoryOrder(categoryItems);
 };
 
-async function saveNewOrderToSupabase(updatedItems) {
+// Функция массового сохранения обновленных индексов в Supabase
+async function saveAllCategoryOrder(categoryItems) {
   if (!supabaseClient) return;
 
   try {
-    for (const it of updatedItems) {
+    for (const it of categoryItems) {
       const idField = it.product_id !== undefined ? 'product_id' : 'id';
       const realId = it.product_id !== undefined ? it.product_id : it.id;
 
@@ -303,7 +313,6 @@ async function saveNewOrderToSupabase(updatedItems) {
 
   loadInventory();
 }
-
 // Изменение количества (+ / -)
 async function updateQty(id, delta) {
   if (!supabaseClient) return;

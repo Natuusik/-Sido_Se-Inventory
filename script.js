@@ -236,30 +236,33 @@ function renderInventory(items) {
     container.innerHTML = htmlOutput;
 }
 // Функции перемещения строк стрелочками в своей категории
+// Надежное перемещение ровно на 1 позицию вверх
 window.moveItemUp = function (id) {
     return __awaiter(this, void 0, void 0, function* () {
-        var _a, _b;
         const item = allProducts.find(p => String(p.id) === String(id) || String(p.product_id) === String(id));
         if (!item)
             return;
         const cat = item.category || 'Other';
+        // Получаем все элементы категории, отсортированные по их текущему порядку
         const categoryItems = allProducts
             .filter(p => (p.category || 'Other') === cat)
             .sort((a, b) => { var _a, _b; return ((_a = a.sort_order) !== null && _a !== void 0 ? _a : 0) - ((_b = b.sort_order) !== null && _b !== void 0 ? _b : 0); });
         const index = categoryItems.findIndex(p => String(p.id) === String(id) || String(p.product_id) === String(id));
         if (index <= 0)
-            return; // Уже на самом верху
-        // Меняем местами sort_order с предыдущим элементом
-        const prevItem = categoryItems[index - 1];
-        const tempOrder = (_a = item.sort_order) !== null && _a !== void 0 ? _a : index;
-        item.sort_order = (_b = prevItem.sort_order) !== null && _b !== void 0 ? _b : (index - 1);
-        prevItem.sort_order = tempOrder;
-        yield saveNewOrderToSupabase([item, prevItem]);
+            return; // Уже на самом верху, выше некуда
+        // Вырезаем элемент с текущей позиции и вставляем на позицию выше (index - 1)
+        categoryItems.splice(index, 1);
+        categoryItems.splice(index - 1, 0, item);
+        // Принудительно присваиваем абсолютно всем элементам категории чистые индексы 0, 1, 2, 3...
+        categoryItems.forEach((p, idx) => {
+            p.sort_order = idx;
+        });
+        yield saveAllCategoryOrder(categoryItems);
     });
 };
+// Надежное перемещение ровно на 1 позицию вниз
 window.moveItemDown = function (id) {
     return __awaiter(this, void 0, void 0, function* () {
-        var _a, _b;
         const item = allProducts.find(p => String(p.id) === String(id) || String(p.product_id) === String(id));
         if (!item)
             return;
@@ -269,21 +272,24 @@ window.moveItemDown = function (id) {
             .sort((a, b) => { var _a, _b; return ((_a = a.sort_order) !== null && _a !== void 0 ? _a : 0) - ((_b = b.sort_order) !== null && _b !== void 0 ? _b : 0); });
         const index = categoryItems.findIndex(p => String(p.id) === String(id) || String(p.product_id) === String(id));
         if (index === -1 || index >= categoryItems.length - 1)
-            return; // Уже внизу
-        // Меняем местами sort_order со следующим элементом
-        const nextItem = categoryItems[index + 1];
-        const tempOrder = (_a = item.sort_order) !== null && _a !== void 0 ? _a : index;
-        item.sort_order = (_b = nextItem.sort_order) !== null && _b !== void 0 ? _b : (index + 1);
-        nextItem.sort_order = tempOrder;
-        yield saveNewOrderToSupabase([item, nextItem]);
+            return; // Уже в самом низу
+        // Вырезаем элемент и вставляем на позицию ниже (index + 1)
+        categoryItems.splice(index, 1);
+        categoryItems.splice(index + 1, 0, item);
+        // Присваиваем чистые последовательные индексы 0, 1, 2, 3...
+        categoryItems.forEach((p, idx) => {
+            p.sort_order = idx;
+        });
+        yield saveAllCategoryOrder(categoryItems);
     });
 };
-function saveNewOrderToSupabase(updatedItems) {
+// Функция массового сохранения обновленных индексов в Supabase
+function saveAllCategoryOrder(categoryItems) {
     return __awaiter(this, void 0, void 0, function* () {
         if (!supabaseClient)
             return;
         try {
-            for (const it of updatedItems) {
+            for (const it of categoryItems) {
                 const idField = it.product_id !== undefined ? 'product_id' : 'id';
                 const realId = it.product_id !== undefined ? it.product_id : it.id;
                 yield supabaseClient
