@@ -108,7 +108,7 @@ function loadInventory() {
         const { data, error } = yield supabaseClient
             .from(TABLE_NAME)
             .select('*')
-            .order('name', { ascending: true });
+            .order('sort_order', { ascending: true });
         if (error) {
             console.error('Error loading:', error.message);
             return;
@@ -124,6 +124,10 @@ function getSortedCategoriesMap(items) {
         if (!map[cat])
             map[cat] = [];
         map[cat].push(item);
+    });
+    // Сортируем элементы внутри каждой категории по sort_order
+    Object.keys(map).forEach(cat => {
+        map[cat].sort((a, b) => { var _a, _b; return ((_a = a.sort_order) !== null && _a !== void 0 ? _a : 0) - ((_b = b.sort_order) !== null && _b !== void 0 ? _b : 0); });
     });
     const sortedKeys = Object.keys(map).sort((a, b) => {
         const indexA = CATEGORY_ORDER.indexOf(a);
@@ -143,7 +147,7 @@ function renderInventory(items) {
     if (!container)
         return;
     if (items.length === 0) {
-        container.innerHTML = `<div class="p-8 text-center text-stone-400">Нет данных для отображения</div>`;
+        container.innerHTML = `<div class="p-8 text-center bg-white rounded-3xl border border-stone-200 text-stone-400">Нет данных для отображения</div>`;
         return;
     }
     const { map, sortedKeys } = getSortedCategoriesMap(items);
@@ -161,11 +165,11 @@ function renderInventory(items) {
           </span>
         </div>
 
-<div class="overflow-x-auto">
+        <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse">
             <thead>
               <tr class="border-b border-stone-100 text-stone-400 text-xs uppercase tracking-wider">
-                <th class="p-4 font-semibold w-10 text-center">⋮⋮</th>
+                <th class="p-4 font-semibold w-16 text-center">Order</th>
                 <th class="p-4 font-semibold w-12 text-center border-r border-stone-100">No.</th>
                 <th class="p-4 font-semibold border-r border-stone-100">Name</th>
                 <th class="p-4 font-semibold w-32 border-r border-stone-100">Size</th>
@@ -174,14 +178,13 @@ function renderInventory(items) {
                 <th class="p-4 font-semibold text-right w-36">Actions</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-stone-100 text-sm sortable-tbody">
+            <tbody class="divide-y divide-stone-100 text-sm">
     `;
         categoryItems.forEach(item => {
             const itemId = item.id !== undefined ? item.id : item.product_id;
             const unit = item.unit || 'pcs';
             const isLowStock = !!(item.min_stock !== null && unit === 'pcs' && item.quantity <= item.min_stock);
             const stockTextColor = isLowStock ? 'text-red-600 font-bold' : 'text-stone-900 font-bold';
-            // Кнопки изменения (+ / -) для pcs и cm
             let actionButtons = `
         <div class="inline-flex rounded-xl overflow-hidden border border-stone-200">
           <button type="button" data-action="dec" data-id="${itemId}" class="bg-stone-50 hover:bg-amber-100 text-amber-700 px-2 py-1 text-xs font-semibold border-r border-stone-200 cursor-pointer">-</button>
@@ -189,8 +192,13 @@ function renderInventory(items) {
         </div>
       `;
             htmlOutput += `
-        <tr draggable="true" data-id="${itemId}" class="hover:bg-stone-50/80 transition-colors border-b border-stone-100 cursor-grab active:cursor-grabbing">
-          <td class="p-4 text-center text-stone-300 hover:text-stone-600 select-none">⋮⋮</td>
+        <tr data-id="${itemId}" class="hover:bg-stone-50/80 transition-colors border-b border-stone-100">
+          <td class="p-2 text-center">
+            <div class="flex items-center justify-center space-x-1">
+              <button type="button" onclick="moveItemUp(${itemId})" class="bg-stone-50 hover:bg-stone-200 text-stone-600 border border-stone-200 px-2 py-1 rounded-lg text-xs font-bold cursor-pointer" title="Move Up">▲</button>
+              <button type="button" onclick="moveItemDown(${itemId})" class="bg-stone-50 hover:bg-stone-200 text-stone-600 border border-stone-200 px-2 py-1 rounded-lg text-xs font-bold cursor-pointer" title="Move Down">▼</button>
+            </div>
+          </td>
           <td class="p-4 font-bold text-stone-400 w-12 text-center border-r border-stone-100">${globalIndex++}</td>
           <td class="p-4 font-bold text-stone-900 border-r border-stone-100">
             ${item.name}
@@ -226,55 +234,71 @@ function renderInventory(items) {
     `;
     }
     container.innerHTML = htmlOutput;
-    initDragAndDrop();
 }
-// Логика перетаскивания строк мышкой (Drag & Drop)
-function initDragAndDrop() {
-    const tbodies = document.querySelectorAll('.sortable-tbody');
-    tbodies.forEach(tbody => {
-        let draggedRow = null;
-        tbody.addEventListener('dragstart', (e) => {
-            draggedRow = e.target.closest('tr');
-            if (draggedRow) {
-                draggedRow.classList.add('opacity-40', 'bg-blue-50');
-                e.dataTransfer.effectAllowed = 'move';
+// Функции перемещения строк стрелочками в своей категории
+window.moveItemUp = function (id) {
+    return __awaiter(this, void 0, void 0, function* () {
+        var _a, _b;
+        const item = allProducts.find(p => String(p.id) === String(id) || String(p.product_id) === String(id));
+        if (!item)
+            return;
+        const cat = item.category || 'Other';
+        const categoryItems = allProducts
+            .filter(p => (p.category || 'Other') === cat)
+            .sort((a, b) => { var _a, _b; return ((_a = a.sort_order) !== null && _a !== void 0 ? _a : 0) - ((_b = b.sort_order) !== null && _b !== void 0 ? _b : 0); });
+        const index = categoryItems.findIndex(p => String(p.id) === String(id) || String(p.product_id) === String(id));
+        if (index <= 0)
+            return; // Уже на самом верху
+        // Меняем местами sort_order с предыдущим элементом
+        const prevItem = categoryItems[index - 1];
+        const tempOrder = (_a = item.sort_order) !== null && _a !== void 0 ? _a : index;
+        item.sort_order = (_b = prevItem.sort_order) !== null && _b !== void 0 ? _b : (index - 1);
+        prevItem.sort_order = tempOrder;
+        yield saveNewOrderToSupabase([item, prevItem]);
+    });
+};
+window.moveItemDown = function (id) {
+    return __awaiter(this, void 0, void 0, function* () {
+        var _a, _b;
+        const item = allProducts.find(p => String(p.id) === String(id) || String(p.product_id) === String(id));
+        if (!item)
+            return;
+        const cat = item.category || 'Other';
+        const categoryItems = allProducts
+            .filter(p => (p.category || 'Other') === cat)
+            .sort((a, b) => { var _a, _b; return ((_a = a.sort_order) !== null && _a !== void 0 ? _a : 0) - ((_b = b.sort_order) !== null && _b !== void 0 ? _b : 0); });
+        const index = categoryItems.findIndex(p => String(p.id) === String(id) || String(p.product_id) === String(id));
+        if (index === -1 || index >= categoryItems.length - 1)
+            return; // Уже внизу
+        // Меняем местами sort_order со следующим элементом
+        const nextItem = categoryItems[index + 1];
+        const tempOrder = (_a = item.sort_order) !== null && _a !== void 0 ? _a : index;
+        item.sort_order = (_b = nextItem.sort_order) !== null && _b !== void 0 ? _b : (index + 1);
+        nextItem.sort_order = tempOrder;
+        yield saveNewOrderToSupabase([item, nextItem]);
+    });
+};
+function saveNewOrderToSupabase(updatedItems) {
+    return __awaiter(this, void 0, void 0, function* () {
+        if (!supabaseClient)
+            return;
+        try {
+            for (const it of updatedItems) {
+                const idField = it.product_id !== undefined ? 'product_id' : 'id';
+                const realId = it.product_id !== undefined ? it.product_id : it.id;
+                yield supabaseClient
+                    .from(TABLE_NAME)
+                    .update({ sort_order: it.sort_order })
+                    .eq(idField, realId);
             }
-        });
-        tbody.addEventListener('dragend', (e) => {
-            if (draggedRow) {
-                draggedRow.classList.remove('opacity-40', 'bg-blue-50');
-                draggedRow = null;
-            }
-            // Убираем подсветку со всех строк
-            tbody.querySelectorAll('tr').forEach(tr => tr.classList.remove('border-t-2', 'border-blue-500'));
-        });
-        tbody.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            const targetRow = e.target.closest('tr');
-            if (!targetRow || targetRow === draggedRow)
-                return;
-            tbody.querySelectorAll('tr').forEach(tr => tr.classList.remove('border-t-2', 'border-blue-500'));
-            targetRow.classList.add('border-t-2', 'border-blue-500');
-        });
-        tbody.addEventListener('drop', (e) => {
-            e.preventDefault();
-            const targetRow = e.target.closest('tr');
-            if (!targetRow || !draggedRow || targetRow === draggedRow)
-                return;
-            // Меняем строки местами в DOM визуально
-            const rows = Array.from(tbody.querySelectorAll('tr'));
-            const draggedIndex = rows.indexOf(draggedRow);
-            const targetIndex = rows.indexOf(targetRow);
-            if (draggedIndex < targetIndex) {
-                tbody.insertBefore(draggedRow, targetRow.nextSibling);
-            }
-            else {
-                tbody.insertBefore(draggedRow, targetRow);
-            }
-        });
+        }
+        catch (err) {
+            console.error('Ошибка сохранения порядка:', err);
+        }
+        loadInventory();
     });
 }
-// Изменение количества (+ / -) с учетом шага (для см можно менять по 1 или добавить логику)
+// Изменение количества (+ / -)
 function updateQty(id, delta) {
     return __awaiter(this, void 0, void 0, function* () {
         if (!supabaseClient)
@@ -467,6 +491,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             else {
+                // При добавлении нового товара ставим его в конец категории
+                const category = productData.category;
+                const catItems = allProducts.filter(p => (p.category || 'Other') === category);
+                const maxSort = catItems.length > 0 ? Math.max(...catItems.map(p => { var _a; return (_a = p.sort_order) !== null && _a !== void 0 ? _a : 0; })) : -1;
+                productData.sort_order = maxSort + 1;
                 const { error } = yield supabaseClient
                     .from(TABLE_NAME)
                     .insert([productData]);
