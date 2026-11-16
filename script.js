@@ -502,30 +502,87 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             const { map, sortedKeys } = getSortedCategoriesMap(allProducts);
-            let csvContent = "\uFEFFNo;Название;Категория;Размер;Количество;Ед. изм.;Мин. остаток;Дата обновления\n";
             let globalIndex = 1;
+            // Цвета шапок блоков в Excel под стиль вашего сайта
+            const EXCEL_BLOCK_COLORS = {
+                'Task is 50% Done': { headerBg: '#fef3c7', headerText: '#78350f', border: '#fcd34d' },
+                'Endpaper': { headerBg: '#dbeafe', headerText: '#1e3a8a', border: '#93c5fd' },
+                'Tara': { headerBg: '#ffedd5', headerText: '#7c2d12', border: '#fdba74' },
+                'BXT': { headerBg: '#fee2e2', headerText: '#7f1d1d', border: '#fca5a5' },
+                'Lazer/Inkjet/FM': { headerBg: '#f3e8ff', headerText: '#581c87', border: '#d8b4fe' },
+                'Casing-in': { headerBg: '#fef9c3', headerText: '#713f12', border: '#fde047' },
+                'Other': { headerBg: '#f5f5f4', headerText: '#1c1917', border: '#d6d3d1' },
+                'Consumables': { headerBg: '#d1fae5', headerText: '#064e3b', border: '#6ee7b7' }
+            };
+            let blocksHtml = '';
             for (const catKey of sortedKeys) {
                 const categoryItems = map[catKey];
+                if (categoryItems.length === 0)
+                    continue;
+                const colors = EXCEL_BLOCK_COLORS[catKey] || EXCEL_BLOCK_COLORS['Other'];
+                // Каждый блок — это отдельная самостоятельная таблица с отступом снизу
+                blocksHtml += `
+          <table border="1" style="border-collapse: collapse; font-family: Arial, sans-serif; font-size: 11pt; width: 100%; margin-bottom: 20px;">
+            <thead>
+              <tr>
+                <th colspan="6" style="background-color: ${colors.headerBg}; color: ${colors.headerText}; font-size: 12pt; font-weight: bold; text-align: left; padding: 10px; border: 1px solid ${colors.border};">
+                  ${catKey} (Items: ${categoryItems.length})
+                </th>
+              </tr>
+              <tr style="background-color: #f5f5f4; color: #57534e; font-weight: bold;">
+                <th style="padding: 6px; border: 1px solid #d6d3d1; width: 50px; text-align: center;">No.</th>
+                <th style="padding: 6px; border: 1px solid #d6d3d1; width: 320px; text-align: left;">Name</th>
+                <th style="padding: 6px; border: 1px solid #d6d3d1; width: 140px; text-align: left;">Size</th>
+                <th style="padding: 6px; border: 1px solid #d6d3d1; width: 140px; text-align: right;">Quantity</th>
+                <th style="padding: 6px; border: 1px solid #d6d3d1; width: 80px; text-align: center;">Unit</th>
+                <th style="padding: 6px; border: 1px solid #d6d3d1; width: 140px; text-align: center;">Updated At</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
                 categoryItems.forEach(item => {
-                    var _a, _b;
-                    const row = [
-                        globalIndex++,
-                        `"${(item.name || '').replace(/"/g, '""')}"`,
-                        `"${(item.category || '').replace(/"/g, '""')}"`,
-                        `"${(item.size || '').replace(/"/g, '""')}"`,
-                        `"${(_a = item.quantity) !== null && _a !== void 0 ? _a : 0}"`,
-                        `"${(item.unit || 'pcs')}"`,
-                        (_b = item.min_stock) !== null && _b !== void 0 ? _b : 0,
-                        `"${(item.updated_at || '')}"`
-                    ];
-                    csvContent += row.join(";") + "\n";
+                    var _a;
+                    const rawQtyStr = String((_a = item.quantity) !== null && _a !== void 0 ? _a : '0').trim();
+                    const isPureNumber = /^-?\d+(\.\d+)?$/.test(rawQtyStr);
+                    const displayUnit = isPureNumber ? (item.unit || 'pcs') : '—';
+                    // Подсветка красным в Excel, если остаток на минимуме (0 или ниже)
+                    const numericQty = parseFloat(rawQtyStr);
+                    const minThreshold = (item.min_stock !== null && item.min_stock !== undefined) ? Number(item.min_stock) : 0;
+                    const isLowStock = !isNaN(numericQty) && numericQty <= minThreshold;
+                    const qtyColor = isLowStock ? 'color: #dc2626; background-color: #fef2f2;' : 'color: #1c1917;';
+                    blocksHtml += `
+            <tr>
+              <td style="padding: 6px; border: 1px solid #d6d3d1; text-align: center;">${globalIndex++}</td>
+              <td style="padding: 6px; border: 1px solid #d6d3d1; font-weight: bold;">${item.name || ''}</td>
+              <td style="padding: 6px; border: 1px solid #d6d3d1;">${item.size || '—'}</td>
+              <td style="padding: 6px; border: 1px solid #d6d3d1; text-align: right; font-weight: bold; ${qtyColor}">${rawQtyStr}</td>
+              <td style="padding: 6px; border: 1px solid #d6d3d1; text-align: center;">${displayUnit}</td>
+              <td style="padding: 6px; border: 1px solid #d6d3d1; text-align: center; color: #78716c;">${item.updated_at || ''}</td>
+            </tr>
+          `;
                 });
+                blocksHtml += `
+            </tbody>
+          </table>
+          <br/>
+        `;
             }
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const excelHtml = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://w3.org">
+        <head>
+          <meta charset="UTF-8">
+          <!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Warehouse Inventory</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+        </head>
+        <body>
+          ${blocksHtml}
+        </body>
+        </html>
+      `;
+            const blob = new Blob(['\uFEFF' + excelHtml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.setAttribute('href', url);
-            link.setAttribute('download', `inventory_${new Date().toISOString().slice(0, 10)}.csv`);
+            link.setAttribute('download', `inventory_blocks_${new Date().toISOString().slice(0, 10)}.xls`);
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
