@@ -15,30 +15,63 @@ try {
 
 let allProducts = [];
 
-const CATEGORY_ORDER = ['Endpaper', 'Tara', 'BXT', 'Lazer/Inkjet', 'Casing-in', 'Other', 'Consumables'];
+// 1. Новый самый верхний блок + обновленная категория Lazer/Inkjet/FM
+const CATEGORY_ORDER = [
+  'Task is 50% Done',
+  'Endpaper',
+  'Tara',
+  'BXT',
+  'Lazer/Inkjet/FM',
+  'Casing-in',
+  'Other',
+  'Consumables'
+];
+
 const CATEGORY_TITLES = {
+  'Task is 50% Done': '⏳ Task is 50% Done',
   'Endpaper': '📄 Endpaper',
   'Tara': '📦 Tara',
   'BXT': '📦 BXT',
-  'Lazer/Inkjet': '🖨️ Lazer/Inkjet',
+  'Lazer/Inkjet/FM': '🖨️ Lazer/Inkjet/FM',
   'Casing-in': '📚 Casing-in',
   'Other': '📌 Other',
   'Consumables': '🛠️ Consumables'
 };
 
 const CATEGORY_STYLES = {
+  'Task is 50% Done': { bg: 'bg-amber-50', border: 'border-amber-300', text: 'text-amber-900', badgeBg: 'bg-amber-100 text-amber-800 border-amber-300' },
   'Endpaper': { bg: 'bg-blue-50/50', border: 'border-blue-200', text: 'text-blue-900', badgeBg: 'bg-blue-100 text-blue-800' },
   'Tara': { bg: 'bg-orange-50/50', border: 'border-orange-200', text: 'text-orange-900', badgeBg: 'bg-orange-100 text-orange-800' },
   'BXT': { bg: 'bg-red-50/50', border: 'border-red-200', text: 'text-red-900', badgeBg: 'bg-red-100 text-red-800' },
-  'Lazer/Inkjet': { bg: 'bg-purple-50/50', border: 'border-purple-200', text: 'text-purple-900', badgeBg: 'bg-purple-100 text-purple-800' },
+  'Lazer/Inkjet/FM': { bg: 'bg-purple-50/50', border: 'border-purple-200', text: 'text-purple-900', badgeBg: 'bg-purple-100 text-purple-800' },
   'Casing-in': { bg: 'bg-yellow-50/50', border: 'border-yellow-200', text: 'text-yellow-900', badgeBg: 'bg-yellow-100 text-yellow-800' },
   'Other': { bg: 'bg-stone-50/50', border: 'border-stone-200', text: 'text-stone-900', badgeBg: 'bg-stone-100 text-stone-800' },
   'Consumables': { bg: 'bg-emerald-50/50', border: 'border-emerald-200', text: 'text-emerald-900', badgeBg: 'bg-emerald-100 text-emerald-800' }
 };
 
-function formatNumber(num) {
-  if (num === null || num === undefined) return '0';
-  return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+// Автоматически обновляем выпадающий список категорий в HTML-модалке
+function syncCategorySelectOptions() {
+  const selectEl = document.getElementById('product-category');
+  if (!selectEl) return;
+
+  const currentVal = selectEl.value;
+  selectEl.innerHTML = CATEGORY_ORDER.map(cat => 
+    `<option value="${cat}">${CATEGORY_TITLES[cat] || cat}</option>`
+  ).join('');
+
+  if (currentVal && CATEGORY_ORDER.includes(currentVal)) {
+    selectEl.value = currentVal;
+  }
+}
+
+// Форматирование числа или комбинированной строки (например, "500pcs + 5cm")
+function formatQuantityDisplay(val) {
+  if (val === null || val === undefined || val === '') return '0';
+  const str = String(val).trim();
+  if (/^-?\d+(\.\d+)?$/.test(str)) {
+    return str.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  }
+  return str;
 }
 
 function getFormattedTimestamp() {
@@ -51,21 +84,84 @@ function getFormattedTimestamp() {
   return `${day}.${month}.${year} ${hours}:${minutes}`;
 }
 
+// Синхронизация времени обновления через Supabase (для всех устройств)
+async function fetchGlobalLastUpdate() {
+  if (!supabaseClient) return;
+  const lastUpdateDisplay = document.getElementById('last-update-display');
+  if (!lastUpdateDisplay) return;
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('app_settings')
+      .select('last_update_time')
+      .eq('id', 1)
+      .single();
+
+    if (!error && data && data.last_update_time) {
+      lastUpdateDisplay.textContent = `Updated: ${data.last_update_time}`;
+      return;
+    }
+
+    if (allProducts.length > 0) {
+      const dates = allProducts.map(p => p.updated_at).filter(Boolean);
+      if (dates.length > 0) {
+        lastUpdateDisplay.textContent = `Updated: ${dates[dates.length - 1]}`;
+      }
+    }
+  } catch (err) {
+    console.warn('Не удалось получить время обновления:', err);
+  }
+}
+
+async function saveGlobalLastUpdate(timestampStr) {
+  if (!supabaseClient) return;
+  const lastUpdateDisplay = document.getElementById('last-update-display');
+  if (lastUpdateDisplay) {
+    lastUpdateDisplay.textContent = `Updated: ${timestampStr}`;
+  }
+
+  try {
+    const { error } = await supabaseClient
+      .from('app_settings')
+      .upsert({ id: 1, last_update_time: timestampStr });
+
+    if (error && allProducts.length > 0) {
+      const firstItem = allProducts[0];
+      const idField = firstItem.product_id !== undefined ? 'product_id' : 'id';
+      const realId = firstItem.product_id !== undefined ? firstItem.product_id : firstItem.id;
+      await supabaseClient
+        .from(TABLE_NAME)
+        .update({ updated_at: timestampStr })
+        .eq(idField, realId);
+    }
+  } catch (err) {
+    console.error('Ошибка сохранения времени обновления в Supabase:', err);
+  }
+}
+
+// ==========================================
+// Часть 2: Модальные окна и отрисовка таблиц
+// ==========================================
 function openAddModal() {
+  syncCategorySelectOptions();
   const form = document.getElementById('product-form');
   const editId = document.getElementById('edit-product-id');
   const title = document.getElementById('modal-title');
   const modal = document.getElementById('add-modal');
   const updatedAtSpan = document.getElementById('modal-updated-at');
+  const minStockInput = document.getElementById('product-min-stock');
 
   if (form) form.reset();
   if (editId) editId.value = '';
   if (title) title.textContent = '📦 Add New Product';
   if (updatedAtSpan) updatedAtSpan.textContent = 'Новый товар (дата создастся при сохранении)';
+  // Минимум по умолчанию опущен до 0
+  if (minStockInput) minStockInput.value = '0';
   if (modal) modal.classList.remove('hidden');
 }
 
 function openEditModal(id) {
+  syncCategorySelectOptions();
   const item = allProducts.find(p => String(p.id) === String(id) || String(p.product_id) === String(id));
   if (!item) {
     alert('Товар не найден!');
@@ -74,11 +170,14 @@ function openEditModal(id) {
 
   document.getElementById('edit-product-id').value = item.id !== undefined ? item.id : item.product_id;
   document.getElementById('product-name').value = item.name || '';
-  document.getElementById('product-category').value = item.category || 'Other';
+  
+  const normalizedCat = item.category === 'Lazer/Inkjet' ? 'Lazer/Inkjet/FM' : (item.category || 'Other');
+  document.getElementById('product-category').value = normalizedCat;
+  
   document.getElementById('product-size').value = item.size || '';
   document.getElementById('product-quantity').value = item.quantity ?? 0;
   document.getElementById('product-unit').value = item.unit || 'pcs';
-  document.getElementById('product-min-stock').value = item.min_stock ?? 5;
+  document.getElementById('product-min-stock').value = item.min_stock ?? 0;
 
   const updatedAtSpan = document.getElementById('modal-updated-at');
   if (updatedAtSpan) {
@@ -111,17 +210,22 @@ async function loadInventory() {
 
   allProducts = data || [];
   renderInventory(allProducts);
+  await fetchGlobalLastUpdate();
 }
 
 function getSortedCategoriesMap(items) {
   const map = {};
+  
+  // Блок "Task is 50% Done" всегда отображается первым наверху
+  map['Task is 50% Done'] = [];
+
   items.forEach(item => {
-    const cat = item.category || 'Other';
+    let cat = item.category || 'Other';
+    if (cat === 'Lazer/Inkjet') cat = 'Lazer/Inkjet/FM';
     if (!map[cat]) map[cat] = [];
     map[cat].push(item);
   });
 
-  // Сортируем элементы внутри каждой категории по sort_order
   Object.keys(map).forEach(cat => {
     map[cat].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
   });
@@ -142,11 +246,6 @@ function getSortedCategoriesMap(items) {
 function renderInventory(items) {
   const container = document.getElementById('blocks-container');
   if (!container) return;
-
-  if (items.length === 0) {
-    container.innerHTML = `<div class="p-8 text-center bg-white rounded-3xl border border-stone-200 text-stone-400">Нет данных для отображения</div>`;
-    return;
-  }
 
   const { map, sortedKeys } = getSortedCategoriesMap(items);
   let htmlOutput = '';
@@ -173,62 +272,70 @@ function renderInventory(items) {
                 <th class="p-4 font-semibold w-12 text-center border-r border-stone-100">No.</th>
                 <th class="p-4 font-semibold border-r border-stone-100">Name</th>
                 <th class="p-4 font-semibold w-32 border-r border-stone-100">Size</th>
-                <th class="p-4 font-semibold w-28 text-right border-r border-stone-100">Quantity</th>
-                <th class="p-4 font-semibold w-28 border-r border-stone-100">Unit</th>
-                <th class="p-4 font-semibold text-right w-36">Actions</th>
+                <th class="p-4 font-semibold w-36 text-right border-r border-stone-100">Quantity</th>
+                <th class="p-4 font-semibold w-24 border-r border-stone-100">Unit</th>
+                <th class="p-4 font-semibold text-right w-40">Actions</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-stone-100 text-sm">
     `;
 
-    categoryItems.forEach(item => {
-      const itemId = item.id !== undefined ? item.id : item.product_id;
-      const unit = item.unit || 'pcs';
-      const isLowStock = !!(item.min_stock !== null && unit === 'pcs' && item.quantity <= item.min_stock);
-      const stockTextColor = isLowStock ? 'text-red-600 font-bold' : 'text-stone-900 font-bold';
-
-      let actionButtons = `
-        <div class="inline-flex rounded-xl overflow-hidden border border-stone-200">
-          <button type="button" data-action="dec" data-id="${itemId}" class="bg-stone-50 hover:bg-amber-100 text-amber-700 px-2 py-1 text-xs font-semibold border-r border-stone-200 cursor-pointer">-</button>
-          <button type="button" data-action="inc" data-id="${itemId}" class="bg-stone-50 hover:bg-emerald-100 text-emerald-700 px-2 py-1 text-xs font-semibold cursor-pointer">+</button>
-        </div>
-      `;
-
+    if (categoryItems.length === 0) {
       htmlOutput += `
-        <tr data-id="${itemId}" class="hover:bg-stone-50/80 transition-colors border-b border-stone-100">
-          <td class="p-2 text-center">
-            <div class="flex items-center justify-center space-x-1">
-              <button type="button" onclick="moveItemUp(${itemId})" class="bg-stone-50 hover:bg-stone-200 text-stone-600 border border-stone-200 px-2 py-1 rounded-lg text-xs font-bold cursor-pointer" title="Move Up">▲</button>
-              <button type="button" onclick="moveItemDown(${itemId})" class="bg-stone-50 hover:bg-stone-200 text-stone-600 border border-stone-200 px-2 py-1 rounded-lg text-xs font-bold cursor-pointer" title="Move Down">▼</button>
-            </div>
-          </td>
-          <td class="p-4 font-bold text-stone-400 w-12 text-center border-r border-stone-100">${globalIndex++}</td>
-          <td class="p-4 font-bold text-stone-900 border-r border-stone-100">
-            ${item.name}
-          </td>
-          <td class="p-4 text-stone-700 font-medium w-32 truncate border-r border-stone-100">${item.size || '—'}</td>
-          <td class="p-4 w-28 text-right border-r border-stone-100">
-            <span class="${stockTextColor} text-sm">
-              ${formatNumber(item.quantity)} ${isLowStock ? '⚠️' : ''}
-            </span>
-          </td>
-          <td class="p-4 w-28 border-r border-stone-100">
-            <div class="flex items-center justify-between gap-2">
-              <span class="text-stone-500 font-medium text-xs">${unit}</span>
-              ${actionButtons}
-            </div>
-          </td>
-          <td class="p-4 text-right w-36 space-x-1">
-            <button type="button" data-action="edit" data-id="${itemId}" class="bg-stone-100 hover:bg-stone-200 text-stone-700 px-2.5 py-1.5 rounded-xl text-xs font-semibold border border-stone-200 cursor-pointer">
-              ✏️ Edit
-            </button>
-            <button type="button" data-action="delete" data-id="${itemId}" class="bg-rose-50 hover:bg-rose-100 text-rose-600 px-2.5 py-1.5 rounded-xl text-xs font-semibold border border-rose-200 shadow-sm cursor-pointer">
-              🗑️
-            </button>
+        <tr>
+          <td colspan="7" class="p-5 text-center text-stone-400 text-xs italic">
+            Нет позиций в этой категории
           </td>
         </tr>
       `;
-    });
+    } else {
+      categoryItems.forEach(item => {
+        const itemId = item.id !== undefined ? item.id : item.product_id;
+        const unit = item.unit || 'pcs';
+        
+        const rawQtyStr = String(item.quantity ?? '0').trim();
+        const isPureNumber = /^-?\d+(\.\d+)?$/.test(rawQtyStr);
+        const numericQty = isPureNumber ? parseFloat(rawQtyStr) : parseFloat(rawQtyStr);
+        
+        // Минимум для предупреждения опущен до 0
+        const minThreshold = (item.min_stock !== null && item.min_stock !== undefined) ? Number(item.min_stock) : 0;
+        const isLowStock = !isNaN(numericQty) && numericQty <= minThreshold;
+        const stockTextColor = isLowStock ? 'text-red-600 font-bold' : 'text-stone-900 font-bold';
+
+        const displayQty = formatQuantityDisplay(item.quantity);
+        const displayUnit = isPureNumber ? unit : '—';
+
+        const plusMinusButtons = isPureNumber
+          ? `<div class="inline-flex rounded-xl overflow-hidden border border-stone-200 mr-1">
+               <button type="button" data-action="dec" data-id="${itemId}" class="bg-stone-50 hover:bg-amber-100 text-amber-700 px-2 py-1 text-xs font-semibold border-r border-stone-200 cursor-pointer">-</button>
+               <button type="button" data-action="inc" data-id="${itemId}" class="bg-stone-50 hover:bg-emerald-100 text-emerald-700 px-2 py-1 text-xs font-semibold cursor-pointer">+</button>
+             </div>`
+          : '';
+
+        htmlOutput += `
+          <tr class="hover:bg-stone-50/80 transition-colors">
+            <td class="p-3 text-center">
+              <div class="inline-flex flex-col space-y-0.5">
+                <button type="button" onclick="moveItemUp('${itemId}')" class="text-stone-400 hover:text-stone-700 text-xs leading-none cursor-pointer" title="Up">▲</button>
+                <button type="button" onclick="moveItemDown('${itemId}')" class="text-stone-400 hover:text-stone-700 text-xs leading-none cursor-pointer" title="Down">▼</button>
+              </div>
+            </td>
+            <td class="p-4 text-center font-mono text-xs text-stone-400 border-r border-stone-100">${globalIndex++}</td>
+            <td class="p-4 font-semibold text-stone-800 border-r border-stone-100">${item.name || ''}</td>
+            <td class="p-4 text-stone-600 border-r border-stone-100">${item.size || '—'}</td>
+            <td class="p-4 text-right font-mono ${stockTextColor} border-r border-stone-100 whitespace-nowrap">
+              ${displayQty} ${isLowStock ? '⚠️' : ''}
+            </td>
+            <td class="p-4 text-stone-500 text-xs border-r border-stone-100">${displayUnit}</td>
+            <td class="p-4 text-right whitespace-nowrap">
+              ${plusMinusButtons}
+              <button type="button" data-action="edit" data-id="${itemId}" class="bg-stone-50 hover:bg-amber-50 text-stone-500 hover:text-amber-600 border border-stone-200 px-2 py-1 rounded-xl text-xs cursor-pointer mr-1" title="Edit">✏️</button>
+              <button type="button" data-action="delete" data-id="${itemId}" class="bg-stone-50 hover:bg-rose-50 text-stone-500 hover:text-rose-600 border border-stone-200 px-2 py-1 rounded-xl text-xs cursor-pointer" title="Delete">🗑️</button>
+            </td>
+          </tr>
+        `;
+      });
+    }
 
     htmlOutput += `
             </tbody>
@@ -241,26 +348,27 @@ function renderInventory(items) {
   container.innerHTML = htmlOutput;
 }
 
-// Функции перемещения строк стрелочками в своей категории
-// Надежное перемещение ровно на 1 позицию вверх
+
+// ==========================================
+// Часть 3: Стрелочки, +/-, удаление, обновление и сохранение формы
+// ==========================================
 (window as any).moveItemUp = async function(id) {
   const item = allProducts.find(p => String(p.id) === String(id) || String(p.product_id) === String(id));
   if (!item) return;
 
-  const cat = item.category || 'Other';
-  // Получаем все элементы категории, отсортированные по их текущему порядку
+  const normalizeCat = (c) => (c === 'Lazer/Inkjet' ? 'Lazer/Inkjet/FM' : (c || 'Other'));
+  const targetCat = normalizeCat(item.category);
+
   const categoryItems = allProducts
-    .filter(p => (p.category || 'Other') === cat)
+    .filter(p => normalizeCat(p.category) === targetCat)
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 
   const index = categoryItems.findIndex(p => String(p.id) === String(id) || String(p.product_id) === String(id));
-  if (index <= 0) return; // Уже на самом верху, выше некуда
+  if (index <= 0) return;
 
-  // Вырезаем элемент с текущей позиции и вставляем на позицию выше (index - 1)
   categoryItems.splice(index, 1);
   categoryItems.splice(index - 1, 0, item);
 
-  // Принудительно присваиваем абсолютно всем элементам категории чистые индексы 0, 1, 2, 3...
   categoryItems.forEach((p, idx) => {
     p.sort_order = idx;
   });
@@ -268,24 +376,23 @@ function renderInventory(items) {
   await saveAllCategoryOrder(categoryItems);
 };
 
-// Надежное перемещение ровно на 1 позицию вниз
 (window as any).moveItemDown = async function(id) {
   const item = allProducts.find(p => String(p.id) === String(id) || String(p.product_id) === String(id));
   if (!item) return;
 
-  const cat = item.category || 'Other';
+  const normalizeCat = (c) => (c === 'Lazer/Inkjet' ? 'Lazer/Inkjet/FM' : (c || 'Other'));
+  const targetCat = normalizeCat(item.category);
+
   const categoryItems = allProducts
-    .filter(p => (p.category || 'Other') === cat)
+    .filter(p => normalizeCat(p.category) === targetCat)
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 
   const index = categoryItems.findIndex(p => String(p.id) === String(id) || String(p.product_id) === String(id));
-  if (index === -1 || index >= categoryItems.length - 1) return; // Уже в самом низу
+  if (index === -1 || index >= categoryItems.length - 1) return;
 
-  // Вырезаем элемент и вставляем на позицию ниже (index + 1)
   categoryItems.splice(index, 1);
   categoryItems.splice(index + 1, 0, item);
 
-  // Присваиваем чистые последовательные индексы 0, 1, 2, 3...
   categoryItems.forEach((p, idx) => {
     p.sort_order = idx;
   });
@@ -293,7 +400,6 @@ function renderInventory(items) {
   await saveAllCategoryOrder(categoryItems);
 };
 
-// Функция массового сохранения обновленных индексов в Supabase
 async function saveAllCategoryOrder(categoryItems) {
   if (!supabaseClient) return;
 
@@ -313,6 +419,7 @@ async function saveAllCategoryOrder(categoryItems) {
 
   loadInventory();
 }
+
 // Изменение количества (+ / -)
 async function updateQty(id, delta) {
   if (!supabaseClient) return;
@@ -332,7 +439,10 @@ async function updateQty(id, delta) {
     })
     .eq(idField, id);
 
-  if (!error) loadInventory();
+  if (!error) {
+    await saveGlobalLastUpdate(currentTime);
+    loadInventory();
+  }
 }
 
 async function deleteProduct(id) {
@@ -353,6 +463,8 @@ async function deleteProduct(id) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  syncCategorySelectOptions();
+
   const dateEl = document.getElementById('current-date');
   if (dateEl) {
     const now = new Date();
@@ -379,21 +491,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Глобальная кнопка обновления — сохраняет время в Supabase для всех устройств
   const globalRefreshBtn = document.getElementById('global-refresh-btn');
-  const lastUpdateDisplay = document.getElementById('last-update-display');
-  const savedLastUpdate = localStorage.getItem('warehouse_last_refresh');
-  if (savedLastUpdate && lastUpdateDisplay) {
-    lastUpdateDisplay.textContent = `Updated: ${savedLastUpdate}`;
-  }
-
   if (globalRefreshBtn) {
-    globalRefreshBtn.addEventListener('click', () => {
+    globalRefreshBtn.addEventListener('click', async () => {
+      globalRefreshBtn.disabled = true;
+      globalRefreshBtn.style.opacity = '0.6';
+
       const nowStr = getFormattedTimestamp();
-      if (lastUpdateDisplay) {
-        lastUpdateDisplay.textContent = `Updated: ${nowStr}`;
-      }
-      localStorage.setItem('warehouse_last_refresh', nowStr);
-      loadInventory();
+      await saveGlobalLastUpdate(nowStr);
+      await loadInventory();
+
+      globalRefreshBtn.disabled = false;
+      globalRefreshBtn.style.opacity = '1';
     });
   }
 
@@ -428,9 +538,9 @@ document.addEventListener('DOMContentLoaded', () => {
             `"${(item.name || '').replace(/"/g, '""')}"`,
             `"${(item.category || '').replace(/"/g, '""')}"`,
             `"${(item.size || '').replace(/"/g, '""')}"`,
-            item.quantity ?? 0,
+            `"${item.quantity ?? 0}"`,
             `"${(item.unit || 'pcs')}"`,
-            item.min_stock ?? 5,
+            item.min_stock ?? 0,
             `"${(item.updated_at || '')}"`
           ];
           csvContent += row.join(";") + "\n";
@@ -473,6 +583,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderInventory(allProducts);
         return;
       }
+
       const filtered = allProducts.filter(item => 
         (item.name && item.name.toLowerCase().includes(query)) || 
         (item.size && item.size.toLowerCase().includes(query))
@@ -489,15 +600,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const editId = document.getElementById('edit-product-id').value;
       const forcedTime = form.dataset.forcedTimestamp;
+      const nowStr = forcedTime || getFormattedTimestamp();
+
+      // Поддержка как чисел ("500"), так и комбинированного текста ("500pcs + 5cm")
+      const rawQtyInput = document.getElementById('product-quantity').value.trim();
+      const normalizedNumberStr = rawQtyInput.replace(',', '.');
+      const parsedQuantity = /^-?\d+(\.\d+)?$/.test(normalizedNumberStr)
+        ? parseFloat(normalizedNumberStr)
+        : (rawQtyInput || '0');
       
       const productData = {
         name: document.getElementById('product-name').value,
         category: document.getElementById('product-category').value,
         size: document.getElementById('product-size').value,
-        quantity: parseFloat(document.getElementById('product-quantity').value.replace(',', '.')) || 0,
+        quantity: parsedQuantity,
         unit: document.getElementById('product-unit').value,
         min_stock: parseFloat(document.getElementById('product-min-stock').value) || 0,
-        updated_at: forcedTime || getFormattedTimestamp()
+        updated_at: nowStr
       };
 
       delete form.dataset.forcedTimestamp;
@@ -516,24 +635,21 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
       } else {
-        // При добавлении нового товара ставим его в конец категории
         const category = productData.category;
         const catItems = allProducts.filter(p => (p.category || 'Other') === category);
         const maxSort = catItems.length > 0 ? Math.max(...catItems.map(p => p.sort_order ?? 0)) : -1;
-        productData.sort_order = maxSort + 1;
-
-        const { error } = await supabaseClient
-          .from(TABLE_NAME)
-          .insert([productData]);
-
-        if (error) {
-          alert('Ошибка добавления: ' + error.message);
-          return;
-        }
-      }
-
-      closeModal();
-      loadInventory();
-    });
-  }
+productData.sort_order = maxSort + 1;
+const { error } = await supabaseClient
+.from(TABLE_NAME)
+.insert([productData]);
+if (error) {
+alert('Ошибка добавления: ' + error.message);
+return;
+}
+}
+await saveGlobalLastUpdate(nowStr);
+closeModal();
+loadInventory();
+});
+}
 });
