@@ -4,6 +4,8 @@ const SUPABASE_URL = 'https://bxuxjkkmtxarhpteczrf.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_247tzVawplIRCgdrb0B5mA_fbijtbF7'; 
 const TABLE_NAME = 'products';
 
+
+
 let supabaseClient = null;
 try {
   if (window.supabase) {
@@ -14,8 +16,9 @@ try {
 }
 
 let allProducts = [];
+let activeTab: 'materials' | 'boxes' = 'materials';
+const BOXES_CATEGORY = 'Inventory Boxes';
 
-// 1. Новый самый верхний блок + обновленная категория Lazer/Inkjet/FM
 const CATEGORY_ORDER = [
   'Task is 50% Done',
   'Endpaper',
@@ -35,7 +38,8 @@ const CATEGORY_TITLES = {
   'Lazer/Inkjet/FM': '🖨️ Lazer/Inkjet/FM',
   'Casing-in': '📚 Casing-in',
   'Other': '📌 Other',
-  'Consumables': '🛠️ Consumables'
+  'Consumables': '🛠️ Consumables',
+  'Inventory Boxes': '📦 Inventory Boxes'
 };
 
 const CATEGORY_STYLES = {
@@ -46,25 +50,26 @@ const CATEGORY_STYLES = {
   'Lazer/Inkjet/FM': { bg: 'bg-purple-50/50', border: 'border-purple-200', text: 'text-purple-900', badgeBg: 'bg-purple-100 text-purple-800' },
   'Casing-in': { bg: 'bg-yellow-50/50', border: 'border-yellow-200', text: 'text-yellow-900', badgeBg: 'bg-yellow-100 text-yellow-800' },
   'Other': { bg: 'bg-stone-50/50', border: 'border-stone-200', text: 'text-stone-900', badgeBg: 'bg-stone-100 text-stone-800' },
-  'Consumables': { bg: 'bg-emerald-50/50', border: 'border-emerald-200', text: 'text-emerald-900', badgeBg: 'bg-emerald-100 text-emerald-800' }
+  'Consumables': { bg: 'bg-emerald-50/50', border: 'border-emerald-200', text: 'text-emerald-900', badgeBg: 'bg-emerald-100 text-emerald-800' },
+  'Inventory Boxes': { bg: 'bg-teal-50/70', border: 'border-teal-300', text: 'text-teal-950', badgeBg: 'bg-teal-100 text-teal-800 border-teal-300' }
 };
 
-// Автоматически обновляем выпадающий список категорий в HTML-модалке
 function syncCategorySelectOptions() {
   const selectEl = document.getElementById('product-category');
   if (!selectEl) return;
 
+  const availableCategories = activeTab === 'boxes' ? [BOXES_CATEGORY] : CATEGORY_ORDER;
   const currentVal = selectEl.value;
-  selectEl.innerHTML = CATEGORY_ORDER.map(cat => 
+
+  selectEl.innerHTML = availableCategories.map(cat => 
     `<option value="${cat}">${CATEGORY_TITLES[cat] || cat}</option>`
   ).join('');
 
-  if (currentVal && CATEGORY_ORDER.includes(currentVal)) {
+  if (currentVal && availableCategories.includes(currentVal)) {
     selectEl.value = currentVal;
   }
 }
 
-// Форматирование числа или комбинированной строки (например, "500pcs + 5cm")
 function formatQuantityDisplay(val) {
   if (val === null || val === undefined || val === '') return '0';
   const str = String(val).trim();
@@ -84,7 +89,6 @@ function getFormattedTimestamp() {
   return `${day}.${month}.${year} ${hours}:${minutes}`;
 }
 
-// Синхронизация времени обновления через Supabase (для всех устройств)
 async function fetchGlobalLastUpdate() {
   if (!supabaseClient) return;
   const lastUpdateDisplay = document.getElementById('last-update-display');
@@ -126,7 +130,7 @@ async function saveGlobalLastUpdate(timestampStr) {
       .upsert({ id: 1, last_update_time: timestampStr });
 
     if (error && allProducts.length > 0) {
-      const firstItem = allProducts[0];
+      const firstItem = allProducts;
       const idField = firstItem.product_id !== undefined ? 'product_id' : 'id';
       const realId = firstItem.product_id !== undefined ? firstItem.product_id : firstItem.id;
       await supabaseClient
@@ -150,13 +154,39 @@ function openAddModal() {
   const modal = document.getElementById('add-modal');
   const updatedAtSpan = document.getElementById('modal-updated-at');
   const minStockInput = document.getElementById('product-min-stock');
+  
+  const codeWrapper = document.getElementById('box-code-wrapper');
+  const codeInput = document.getElementById('product-code');
+  const nameInput = document.getElementById('product-name');
+  const nameLabel = nameInput?.previousElementSibling;
+  const sizeInput = document.getElementById('product-size');
+  const categorySelect = document.getElementById('product-category');
+  const categoryWrapper = categorySelect ? categorySelect.closest('div') : null;
 
   if (form) form.reset();
   if (editId) editId.value = '';
-  if (title) title.textContent = '📦 Add New Product';
-  if (updatedAtSpan) updatedAtSpan.textContent = 'Новый товар (дата создастся при сохранении)';
-  // Минимум по умолчанию опущен до 0
   if (minStockInput) minStockInput.value = '0';
+  if (updatedAtSpan) updatedAtSpan.textContent = 'Новая запись (дата создастся при сохранении)';
+
+  if (activeTab === 'boxes') {
+    if (title) title.textContent = '📦 Add New Box';
+    if (codeWrapper) codeWrapper.classList.remove('hidden');
+    if (codeInput) codeInput.required = true;
+    if (nameLabel) nameLabel.textContent = 'Box Name *';
+    if (nameInput) nameInput.placeholder = 'Например: Box A4 White / Коробка большая';
+    if (sizeInput) sizeInput.placeholder = 'Например: 320x230x150 mm';
+    if (categorySelect) categorySelect.value = BOXES_CATEGORY;
+    if (categoryWrapper) categoryWrapper.classList.add('hidden');
+  } else {
+    if (title) title.textContent = '📦 Add New Product';
+    if (codeWrapper) codeWrapper.classList.add('hidden');
+    if (codeInput) codeInput.required = false;
+    if (nameLabel) nameLabel.textContent = 'Product Name *';
+    if (nameInput) nameInput.placeholder = 'Product name...';
+    if (sizeInput) sizeInput.placeholder = 'e.g. A4 / 329x500';
+    if (categoryWrapper) categoryWrapper.classList.remove('hidden');
+  }
+
   if (modal) modal.classList.remove('hidden');
 }
 
@@ -164,15 +194,23 @@ function openEditModal(id) {
   syncCategorySelectOptions();
   const item = allProducts.find(p => String(p.id) === String(id) || String(p.product_id) === String(id));
   if (!item) {
-    alert('Товар не найден!');
+    alert('Запись не найдена!');
     return;
   }
 
+  const codeWrapper = document.getElementById('box-code-wrapper');
+  const codeInput = document.getElementById('product-code');
+  const nameInput = document.getElementById('product-name');
+  const nameLabel = nameInput?.previousElementSibling;
+  const categorySelect = document.getElementById('product-category');
+  const categoryWrapper = categorySelect ? categorySelect.closest('div') : null;
+
   document.getElementById('edit-product-id').value = item.id !== undefined ? item.id : item.product_id;
-  document.getElementById('product-name').value = item.name || '';
+  if (codeInput) codeInput.value = item.code || '';
+  if (nameInput) nameInput.value = item.name || '';
   
   const normalizedCat = item.category === 'Lazer/Inkjet' ? 'Lazer/Inkjet/FM' : (item.category || 'Other');
-  document.getElementById('product-category').value = normalizedCat;
+  if (categorySelect) categorySelect.value = normalizedCat;
   
   document.getElementById('product-size').value = item.size || '';
   document.getElementById('product-quantity').value = item.quantity ?? 0;
@@ -184,7 +222,20 @@ function openEditModal(id) {
     updatedAtSpan.textContent = item.updated_at ? `Изменен: ${item.updated_at}` : 'Дата не указана';
   }
 
-  document.getElementById('modal-title').textContent = '✏️ Edit Product';
+  if (activeTab === 'boxes' || item.category === BOXES_CATEGORY) {
+    document.getElementById('modal-title').textContent = '✏️ Edit Box';
+    if (codeWrapper) codeWrapper.classList.remove('hidden');
+    if (codeInput) codeInput.required = true;
+    if (nameLabel) nameLabel.textContent = 'Box Name *';
+    if (categoryWrapper) categoryWrapper.classList.add('hidden');
+  } else {
+    document.getElementById('modal-title').textContent = '✏️ Edit Product';
+    if (codeWrapper) codeWrapper.classList.add('hidden');
+    if (codeInput) codeInput.required = false;
+    if (nameLabel) nameLabel.textContent = 'Product Name *';
+    if (categoryWrapper) categoryWrapper.classList.remove('hidden');
+  }
+
   document.getElementById('add-modal').classList.remove('hidden');
 }
 
@@ -215,18 +266,26 @@ async function loadInventory() {
 
 function getSortedCategoriesMap(items) {
   const map = {};
-  
-  // Блок "Task is 50% Done" всегда отображается первым наверху
+
+  if (activeTab === 'boxes') {
+    map[BOXES_CATEGORY] = items
+      .filter(item => item.category === BOXES_CATEGORY)
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+    return { map, sortedKeys: [BOXES_CATEGORY] };
+  }
+
   map['Task is 50% Done'] = [];
 
   items.forEach(item => {
+    if (item.category === BOXES_CATEGORY) return;
+
     let cat = item.category || 'Other';
     if (cat === 'Lazer/Inkjet') cat = 'Lazer/Inkjet/FM';
     if (!map[cat]) map[cat] = [];
     map[cat].push(item);
   });
 
-  Object.keys(map).forEach(cat => {
+   Object.keys(map).forEach(cat => {
     map[cat].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
   });
 
@@ -254,6 +313,7 @@ function renderInventory(items) {
   for (const catKey of sortedKeys) {
     const categoryItems = map[catKey];
     const style = CATEGORY_STYLES[catKey] || CATEGORY_STYLES['Other'];
+    const isBoxesBlock = catKey === BOXES_CATEGORY;
 
     htmlOutput += `
       <div class="bg-white rounded-3xl border ${style.border} shadow-sm overflow-hidden mb-6">
@@ -270,8 +330,13 @@ function renderInventory(items) {
               <tr class="border-b border-stone-100 text-stone-400 text-xs uppercase tracking-wider">
                 <th class="p-4 font-semibold w-16 text-center">Order</th>
                 <th class="p-4 font-semibold w-12 text-center border-r border-stone-100">No.</th>
-                <th class="p-4 font-semibold border-r border-stone-100">Name</th>
-                <th class="p-4 font-semibold w-32 border-r border-stone-100">Size</th>
+                ${isBoxesBlock 
+                  ? `<th class="p-4 font-semibold w-32 border-r border-stone-100">Code</th>
+                     <th class="p-4 font-semibold w-36 border-r border-stone-100">Size</th>
+                     <th class="p-4 font-semibold border-r border-stone-100">Name</th>`
+                  : `<th class="p-4 font-semibold border-r border-stone-100">Name</th>
+                     <th class="p-4 font-semibold w-32 border-r border-stone-100">Size</th>`
+                }
                 <th class="p-4 font-semibold w-36 text-right border-r border-stone-100">Quantity</th>
                 <th class="p-4 font-semibold w-24 border-r border-stone-100">Unit</th>
                 <th class="p-4 font-semibold text-right w-40">Actions</th>
@@ -283,7 +348,7 @@ function renderInventory(items) {
     if (categoryItems.length === 0) {
       htmlOutput += `
         <tr>
-          <td colspan="7" class="p-5 text-center text-stone-400 text-xs italic">
+          <td colspan="${isBoxesBlock ? 8 : 7}" class="p-5 text-center text-stone-400 text-xs italic">
             Нет позиций в этой категории
           </td>
         </tr>
@@ -312,6 +377,13 @@ function renderInventory(items) {
              </div>`
           : '';
 
+        const middleCells = isBoxesBlock
+          ? `<td class="p-4 font-mono font-bold text-teal-700 border-r border-stone-100">${item.code || '—'}</td>
+             <td class="p-4 text-stone-600 border-r border-stone-100">${item.size || '—'}</td>
+             <td class="p-4 font-semibold text-stone-800 border-r border-stone-100">${item.name || ''}</td>`
+          : `<td class="p-4 font-semibold text-stone-800 border-r border-stone-100">${item.name || ''}</td>
+             <td class="p-4 text-stone-600 border-r border-stone-100">${item.size || '—'}</td>`;
+
         htmlOutput += `
           <tr class="hover:bg-stone-50/80 transition-colors">
             <td class="p-3 text-center">
@@ -321,8 +393,7 @@ function renderInventory(items) {
               </div>
             </td>
             <td class="p-4 text-center font-mono text-xs text-stone-400 border-r border-stone-100">${globalIndex++}</td>
-            <td class="p-4 font-semibold text-stone-800 border-r border-stone-100">${item.name || ''}</td>
-            <td class="p-4 text-stone-600 border-r border-stone-100">${item.size || '—'}</td>
+            ${middleCells}
             <td class="p-4 text-right font-mono ${stockTextColor} border-r border-stone-100 whitespace-nowrap">
               ${displayQty} ${isLowStock ? '⚠️' : ''}
             </td>
@@ -347,7 +418,6 @@ function renderInventory(items) {
 
   container.innerHTML = htmlOutput;
 }
-
 
 // ==========================================
 // Часть 3: Стрелочки, +/-, удаление, обновление и сохранение формы
@@ -464,6 +534,42 @@ async function deleteProduct(id) {
 
 document.addEventListener('DOMContentLoaded', () => {
   syncCategorySelectOptions();
+  const tabMaterialsBtn = document.getElementById('tab-materials');
+  const tabBoxesBtn = document.getElementById('tab-boxes');
+
+  function switchTab(tab: 'materials' | 'boxes') {
+    activeTab = tab;
+    const searchEl = document.getElementById('search-input') as HTMLInputElement | null;
+    if (searchEl) searchEl.value = '';
+
+    const openBtn = document.getElementById('open-modal-btn');
+
+    if (tab === 'materials') {
+      tabMaterialsBtn?.classList.add('bg-white', 'text-stone-900', 'shadow-sm');
+      tabMaterialsBtn?.classList.remove('text-stone-600');
+      tabBoxesBtn?.classList.remove('bg-white', 'text-stone-900', 'shadow-sm');
+      tabBoxesBtn?.classList.add('text-stone-600');
+
+      if (openBtn) {
+        openBtn.textContent = '+ Add Product';
+      }
+    } else {
+      tabBoxesBtn?.classList.add('bg-white', 'text-stone-900', 'shadow-sm');
+      tabBoxesBtn?.classList.remove('text-stone-600');
+      tabMaterialsBtn?.classList.remove('bg-white', 'text-stone-900', 'shadow-sm');
+      tabMaterialsBtn?.classList.add('text-stone-600');
+
+      if (openBtn) {
+        openBtn.textContent = '+ Add Box';
+      }
+    }
+
+    renderInventory(allProducts);
+  }
+
+
+  if (tabMaterialsBtn) tabMaterialsBtn.addEventListener('click', () => switchTab('materials'));
+  if (tabBoxesBtn) tabBoxesBtn.addEventListener('click', () => switchTab('boxes'));
 
   const dateEl = document.getElementById('current-date');
   if (dateEl) {
@@ -549,19 +655,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const colors = EXCEL_BLOCK_COLORS[catKey] || EXCEL_BLOCK_COLORS['Other'];
 
-        // Каждый блок — это отдельная самостоятельная таблица с отступом снизу
+             // Каждый блок — это отдельная самостоятельная таблица с отступом снизу
+        const isBoxesExcel = catKey === BOXES_CATEGORY;
+        const boxColors = { headerBg: '#ccfbf1', headerText: '#115e59', border: '#5eead4' };
+        const activeColors = isBoxesExcel ? boxColors : colors;
+
         blocksHtml += `
           <table border="1" style="border-collapse: collapse; font-family: Arial, sans-serif; font-size: 11pt; width: 100%; margin-bottom: 20px;">
             <thead>
               <tr>
-                <th colspan="6" style="background-color: ${colors.headerBg}; color: ${colors.headerText}; font-size: 12pt; font-weight: bold; text-align: left; padding: 10px; border: 1px solid ${colors.border};">
+                <th colspan="${isBoxesExcel ? 7 : 6}" style="background-color: ${activeColors.headerBg}; color: ${activeColors.headerText}; font-size: 12pt; font-weight: bold; text-align: left; padding: 10px; border: 1px solid ${activeColors.border};">
                   ${catKey} (Items: ${categoryItems.length})
                 </th>
               </tr>
               <tr style="background-color: #f5f5f4; color: #57534e; font-weight: bold;">
                 <th style="padding: 6px; border: 1px solid #d6d3d1; width: 50px; text-align: center;">No.</th>
-                <th style="padding: 6px; border: 1px solid #d6d3d1; width: 320px; text-align: left;">Name</th>
-                <th style="padding: 6px; border: 1px solid #d6d3d1; width: 140px; text-align: left;">Size</th>
+                ${isBoxesExcel
+                  ? `<th style="padding: 6px; border: 1px solid #d6d3d1; width: 120px; text-align: left;">Code</th>
+                     <th style="padding: 6px; border: 1px solid #d6d3d1; width: 140px; text-align: left;">Size</th>
+                     <th style="padding: 6px; border: 1px solid #d6d3d1; width: 300px; text-align: left;">Name</th>`
+                  : `<th style="padding: 6px; border: 1px solid #d6d3d1; width: 320px; text-align: left;">Name</th>
+                     <th style="padding: 6px; border: 1px solid #d6d3d1; width: 140px; text-align: left;">Size</th>`
+                }
                 <th style="padding: 6px; border: 1px solid #d6d3d1; width: 140px; text-align: right;">Quantity</th>
                 <th style="padding: 6px; border: 1px solid #d6d3d1; width: 80px; text-align: center;">Unit</th>
                 <th style="padding: 6px; border: 1px solid #d6d3d1; width: 140px; text-align: center;">Updated At</th>
@@ -581,11 +696,17 @@ document.addEventListener('DOMContentLoaded', () => {
           const isLowStock = !isNaN(numericQty) && numericQty <= minThreshold;
           const qtyColor = isLowStock ? 'color: #dc2626; background-color: #fef2f2;' : 'color: #1c1917;';
 
+          const middleExcelCells = isBoxesExcel
+            ? `<td style="padding: 6px; border: 1px solid #d6d3d1; font-family: monospace; font-weight: bold;">${item.code || '—'}</td>
+               <td style="padding: 6px; border: 1px solid #d6d3d1;">${item.size || '—'}</td>
+               <td style="padding: 6px; border: 1px solid #d6d3d1; font-weight: bold;">${item.name || ''}</td>`
+            : `<td style="padding: 6px; border: 1px solid #d6d3d1; font-weight: bold;">${item.name || ''}</td>
+               <td style="padding: 6px; border: 1px solid #d6d3d1;">${item.size || '—'}</td>`;
+
           blocksHtml += `
             <tr>
               <td style="padding: 6px; border: 1px solid #d6d3d1; text-align: center;">${globalIndex++}</td>
-              <td style="padding: 6px; border: 1px solid #d6d3d1; font-weight: bold;">${item.name || ''}</td>
-              <td style="padding: 6px; border: 1px solid #d6d3d1;">${item.size || '—'}</td>
+              ${middleExcelCells}
               <td style="padding: 6px; border: 1px solid #d6d3d1; text-align: right; font-weight: bold; ${qtyColor}">${rawQtyStr}</td>
               <td style="padding: 6px; border: 1px solid #d6d3d1; text-align: center;">${displayUnit}</td>
               <td style="padding: 6px; border: 1px solid #d6d3d1; text-align: center; color: #78716c;">${item.updated_at || ''}</td>
@@ -623,8 +744,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-
-
   const container = document.getElementById('blocks-container');
   if (container) {
     container.addEventListener('click', (e) => {
@@ -652,6 +771,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       const filtered = allProducts.filter(item => 
+        (item.code && item.code.toLowerCase().includes(query)) ||
         (item.name && item.name.toLowerCase().includes(query)) || 
         (item.size && item.size.toLowerCase().includes(query))
       );
@@ -669,7 +789,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const forcedTime = form.dataset.forcedTimestamp;
       const nowStr = forcedTime || getFormattedTimestamp();
 
-      // Поддержка как чисел ("500"), так и комбинированного текста ("500pcs + 5cm")
+      // Поддержка как чисел ("500"), так и комбинированного текста ("500pcs + 5cm" или "100pcs 50cm")
       const rawQtyInput = document.getElementById('product-quantity').value.trim();
       const normalizedNumberStr = rawQtyInput.replace(',', '.');
       const parsedQuantity = /^-?\d+(\.\d+)?$/.test(normalizedNumberStr)
@@ -677,8 +797,9 @@ document.addEventListener('DOMContentLoaded', () => {
         : (rawQtyInput || '0');
       
       const productData = {
+        code: document.getElementById('product-code')?.value.trim() || '',
         name: document.getElementById('product-name').value,
-        category: document.getElementById('product-category').value,
+        category: activeTab === 'boxes' ? BOXES_CATEGORY : document.getElementById('product-category').value,
         size: document.getElementById('product-size').value,
         quantity: parsedQuantity,
         unit: document.getElementById('product-unit').value,
@@ -705,18 +826,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const category = productData.category;
         const catItems = allProducts.filter(p => (p.category || 'Other') === category);
         const maxSort = catItems.length > 0 ? Math.max(...catItems.map(p => p.sort_order ?? 0)) : -1;
-productData.sort_order = maxSort + 1;
-const { error } = await supabaseClient
-.from(TABLE_NAME)
-.insert([productData]);
-if (error) {
-alert('Ошибка добавления: ' + error.message);
-return;
-}
-}
-await saveGlobalLastUpdate(nowStr);
-closeModal();
-loadInventory();
-});
-}
+        productData.sort_order = maxSort + 1;
+
+        const { error } = await supabaseClient
+          .from(TABLE_NAME)
+          .insert([productData]);
+
+        if (error) {
+          alert('Ошибка добавления: ' + error.message);
+          return;
+        }
+      }
+
+      await saveGlobalLastUpdate(nowStr);
+      closeModal();
+      loadInventory();
+    });
+  }
 });

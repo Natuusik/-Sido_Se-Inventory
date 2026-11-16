@@ -52,6 +52,15 @@
         + Add Product
       </button>
     </div>
+    <div class="flex items-center space-x-2 mb-6 bg-stone-200/70 p-1.5 rounded-2xl w-fit">
+  <button type="button" id="tab-materials" class="px-5 py-2.5 rounded-xl text-sm font-bold bg-white text-stone-900 shadow-sm transition-all cursor-pointer">
+    🏭 Warehouse Inventory
+  </button>
+  <button type="button" id="tab-boxes" class="px-5 py-2.5 rounded-xl text-sm font-bold text-stone-600 hover:text-stone-900 transition-all cursor-pointer">
+    📦 Inventory Boxes
+  </button>
+</div>
+
 
     <!-- Blocks Container -->
     <div id="blocks-container" class="space-y-6">
@@ -72,6 +81,11 @@
 
       <form id="product-form" class="space-y-3">
         <input type="hidden" id="edit-product-id">
+
+            <div id="box-code-wrapper" class="hidden">
+          <label class="block text-xs font-semibold text-stone-600 mb-1">Box Code *</label>
+          <input type="text" id="product-code" class="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-sm font-mono focus:outline-none focus:border-stone-400" placeholder="e.g. 732002">
+        </div>
 
         <div>
           <label class="block text-xs font-semibold text-stone-600 mb-1">Product Name *</label>
