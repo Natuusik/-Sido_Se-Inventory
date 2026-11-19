@@ -483,13 +483,17 @@ async function saveAllCategoryOrder(categoryItems) {
         .update({ sort_order: it.sort_order })
         .eq(idField, realId);
     }
+
+    // 👈 Добавляем сохранение времени при изменении порядка
+    const currentTime = getFormattedTimestamp();
+   await saveGlobalLastUpdate(currentTime);
+
   } catch (err) {
     console.error('Ошибка сохранения порядка:', err);
   }
 
   loadInventory();
 }
-
 // Изменение количества (+ / -)
 async function updateQty(id, delta) {
   if (!supabaseClient) return;
@@ -498,7 +502,7 @@ async function updateQty(id, delta) {
 
   const currentQty = parseFloat(item.quantity) || 0;
   const newQty = Math.max(0, Number((currentQty + delta).toFixed(2)));
-  const currentTime = getFormattedTimestamp();
+  const currentTime = getFormattedTimestamp(); // Генерируем актуальное время
   const idField = item.product_id !== undefined ? 'product_id' : 'id';
 
   const { error } = await supabaseClient
@@ -510,7 +514,7 @@ async function updateQty(id, delta) {
     .eq(idField, id);
 
   if (!error) {
-    await saveGlobalLastUpdate(currentTime);
+    await saveGlobalLastUpdate(currentTime); // 👈 ВОТ ЭТУ СТРОКУ НУЖНО ДОБАВИТЬ
     loadInventory();
   }
 }
@@ -529,7 +533,13 @@ async function deleteProduct(id) {
     .delete()
     .eq(idField, id);
 
-  if (!error) loadInventory();
+  if (!error) {
+    // 👈 Добавляем сохранение времени при удалении
+    const currentTime = getFormattedTimestamp();
+    await saveGlobalLastUpdate(currentTime);
+    
+    loadInventory();
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {

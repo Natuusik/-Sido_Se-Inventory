@@ -482,6 +482,9 @@ function saveAllCategoryOrder(categoryItems) {
                     .update({ sort_order: it.sort_order })
                     .eq(idField, realId);
             }
+            // 👈 Добавляем сохранение времени при изменении порядка
+            const currentTime = getFormattedTimestamp();
+            yield saveGlobalLastUpdate(currentTime);
         }
         catch (err) {
             console.error('Ошибка сохранения порядка:', err);
@@ -499,7 +502,7 @@ function updateQty(id, delta) {
             return;
         const currentQty = parseFloat(item.quantity) || 0;
         const newQty = Math.max(0, Number((currentQty + delta).toFixed(2)));
-        const currentTime = getFormattedTimestamp();
+        const currentTime = getFormattedTimestamp(); // Генерируем актуальное время
         const idField = item.product_id !== undefined ? 'product_id' : 'id';
         const { error } = yield supabaseClient
             .from(TABLE_NAME)
@@ -509,7 +512,7 @@ function updateQty(id, delta) {
         })
             .eq(idField, id);
         if (!error) {
-            yield saveGlobalLastUpdate(currentTime);
+            yield saveGlobalLastUpdate(currentTime); // 👈 ВОТ ЭТУ СТРОКУ НУЖНО ДОБАВИТЬ
             loadInventory();
         }
     });
@@ -528,8 +531,12 @@ function deleteProduct(id) {
             .from(TABLE_NAME)
             .delete()
             .eq(idField, id);
-        if (!error)
+        if (!error) {
+            // 👈 Добавляем сохранение времени при удалении
+            const currentTime = getFormattedTimestamp();
+            yield saveGlobalLastUpdate(currentTime);
             loadInventory();
+        }
     });
 }
 document.addEventListener('DOMContentLoaded', () => {
