@@ -142,7 +142,7 @@ function saveGlobalLastUpdate(timestampStr) {
     });
 }
 // ==========================================
-// Часть 2: Модальные окна и отрисовка таблиц
+// Модальные окна и отрисовка таблиц
 // ==========================================
 function openAddModal() {
     syncCategorySelectOptions();
@@ -374,7 +374,6 @@ function renderInventory(items) {
                 const rawQtyStr = String((_a = item.quantity) !== null && _a !== void 0 ? _a : '0').trim();
                 const isPureNumber = /^-?\d+(\.\d+)?$/.test(rawQtyStr);
                 const numericQty = isPureNumber ? parseFloat(rawQtyStr) : parseFloat(rawQtyStr);
-                // Минимум для предупреждения опущен до 0
                 const minThreshold = (item.min_stock !== null && item.min_stock !== undefined) ? Number(item.min_stock) : 0;
                 const isLowStock = !isNaN(numericQty) && numericQty <= minThreshold;
                 const stockTextColor = isLowStock ? 'text-red-600 font-bold' : 'text-stone-900 font-bold';
@@ -425,7 +424,7 @@ function renderInventory(items) {
     container.innerHTML = htmlOutput;
 }
 // ==========================================
-// Часть 3: Стрелочки, +/-, удаление, обновление и сохранение формы
+// Управление порядком, количеством и удалением
 // ==========================================
 window.moveItemUp = function (id) {
     return __awaiter(this, void 0, void 0, function* () {
@@ -482,7 +481,7 @@ function saveAllCategoryOrder(categoryItems) {
                     .update({ sort_order: it.sort_order })
                     .eq(idField, realId);
             }
-            // 👈 Добавляем сохранение времени при изменении порядка
+            // Автоматическое обновление времени при изменении порядка
             const currentTime = getFormattedTimestamp();
             yield saveGlobalLastUpdate(currentTime);
         }
@@ -492,7 +491,6 @@ function saveAllCategoryOrder(categoryItems) {
         loadInventory();
     });
 }
-// Изменение количества (+ / -)
 function updateQty(id, delta) {
     return __awaiter(this, void 0, void 0, function* () {
         if (!supabaseClient)
@@ -502,7 +500,7 @@ function updateQty(id, delta) {
             return;
         const currentQty = parseFloat(item.quantity) || 0;
         const newQty = Math.max(0, Number((currentQty + delta).toFixed(2)));
-        const currentTime = getFormattedTimestamp(); // Генерируем актуальное время
+        const currentTime = getFormattedTimestamp();
         const idField = item.product_id !== undefined ? 'product_id' : 'id';
         const { error } = yield supabaseClient
             .from(TABLE_NAME)
@@ -512,7 +510,7 @@ function updateQty(id, delta) {
         })
             .eq(idField, id);
         if (!error) {
-            yield saveGlobalLastUpdate(currentTime); // 👈 ВОТ ЭТУ СТРОКУ НУЖНО ДОБАВИТЬ
+            yield saveGlobalLastUpdate(currentTime); // Автоматическое обновление времени
             loadInventory();
         }
     });
@@ -532,13 +530,15 @@ function deleteProduct(id) {
             .delete()
             .eq(idField, id);
         if (!error) {
-            // 👈 Добавляем сохранение времени при удалении
             const currentTime = getFormattedTimestamp();
-            yield saveGlobalLastUpdate(currentTime);
+            yield saveGlobalLastUpdate(currentTime); // Автоматическое обновление времени
             loadInventory();
         }
     });
 }
+// ==========================================
+// Инициализация страницы и слушатели событий
+// ==========================================
 document.addEventListener('DOMContentLoaded', () => {
     syncCategorySelectOptions();
     const tabMaterialsBtn = document.getElementById('tab-materials');
@@ -596,7 +596,6 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('product-form').dataset.forcedTimestamp = nowStr;
         });
     }
-    // Глобальная кнопка обновления — сохраняет время в Supabase для всех устройств
     const globalRefreshBtn = document.getElementById('global-refresh-btn');
     if (globalRefreshBtn) {
         globalRefreshBtn.addEventListener('click', () => __awaiter(void 0, void 0, void 0, function* () {
@@ -629,7 +628,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const { map, sortedKeys } = getSortedCategoriesMap(allProducts);
             let globalIndex = 1;
-            // Цвета шапок блоков в Excel под стиль вашего сайта
             const EXCEL_BLOCK_COLORS = {
                 'Task is 50% Done': { headerBg: '#fef3c7', headerText: '#78350f', border: '#fcd34d' },
                 'Endpaper': { headerBg: '#dbeafe', headerText: '#1e3a8a', border: '#93c5fd' },
@@ -646,7 +644,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (categoryItems.length === 0)
                     continue;
                 const colors = EXCEL_BLOCK_COLORS[catKey] || EXCEL_BLOCK_COLORS['Other'];
-                // Каждый блок — это отдельная самостоятельная таблица с отступом снизу
                 const isBoxesExcel = catKey === BOXES_CATEGORY;
                 const boxColors = { headerBg: '#ccfbf1', headerText: '#115e59', border: '#5eead4' };
                 const activeColors = isBoxesExcel ? boxColors : colors;
@@ -678,7 +675,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     const rawQtyStr = String((_a = item.quantity) !== null && _a !== void 0 ? _a : '0').trim();
                     const isPureNumber = /^-?\d+(\.\d+)?$/.test(rawQtyStr);
                     const displayUnit = isPureNumber ? (item.unit || 'pcs') : '—';
-                    // Подсветка красным в Excel, если остаток на минимуме (0 или ниже)
                     const numericQty = parseFloat(rawQtyStr);
                     const minThreshold = (item.min_stock !== null && item.min_stock !== undefined) ? Number(item.min_stock) : 0;
                     const isLowStock = !isNaN(numericQty) && numericQty <= minThreshold;
@@ -770,7 +766,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const editId = document.getElementById('edit-product-id').value;
             const forcedTime = form.dataset.forcedTimestamp;
             const nowStr = forcedTime || getFormattedTimestamp();
-            // Поддержка как чисел ("500"), так и комбинированного текста ("500pcs + 5cm" или "100pcs 50cm")
             const rawQtyInput = document.getElementById('product-quantity').value.trim();
             const normalizedNumberStr = rawQtyInput.replace(',', '.');
             const parsedQuantity = /^-?\d+(\.\d+)?$/.test(normalizedNumberStr)
@@ -812,7 +807,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
             }
-            yield saveGlobalLastUpdate(nowStr);
+            yield saveGlobalLastUpdate(nowStr); // Автоматическое обновление времени при сохранении формы
             closeModal();
             loadInventory();
         }));

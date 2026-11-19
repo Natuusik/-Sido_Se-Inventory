@@ -4,8 +4,6 @@ const SUPABASE_URL = 'https://bxuxjkkmtxarhpteczrf.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_247tzVawplIRCgdrb0B5mA_fbijtbF7'; 
 const TABLE_NAME = 'products';
 
-
-
 let supabaseClient = null;
 try {
   if (window.supabase) {
@@ -144,7 +142,7 @@ async function saveGlobalLastUpdate(timestampStr) {
 }
 
 // ==========================================
-// Часть 2: Модальные окна и отрисовка таблиц
+// Модальные окна и отрисовка таблиц
 // ==========================================
 function openAddModal() {
   syncCategorySelectOptions();
@@ -285,7 +283,7 @@ function getSortedCategoriesMap(items) {
     map[cat].push(item);
   });
 
-   Object.keys(map).forEach(cat => {
+  Object.keys(map).forEach(cat => {
     map[cat].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
   });
 
@@ -362,7 +360,6 @@ function renderInventory(items) {
         const isPureNumber = /^-?\d+(\.\d+)?$/.test(rawQtyStr);
         const numericQty = isPureNumber ? parseFloat(rawQtyStr) : parseFloat(rawQtyStr);
         
-        // Минимум для предупреждения опущен до 0
         const minThreshold = (item.min_stock !== null && item.min_stock !== undefined) ? Number(item.min_stock) : 0;
         const isLowStock = !isNaN(numericQty) && numericQty <= minThreshold;
         const stockTextColor = isLowStock ? 'text-red-600 font-bold' : 'text-stone-900 font-bold';
@@ -420,7 +417,7 @@ function renderInventory(items) {
 }
 
 // ==========================================
-// Часть 3: Стрелочки, +/-, удаление, обновление и сохранение формы
+// Управление порядком, количеством и удалением
 // ==========================================
 (window as any).moveItemUp = async function(id) {
   const item = allProducts.find(p => String(p.id) === String(id) || String(p.product_id) === String(id));
@@ -484,9 +481,9 @@ async function saveAllCategoryOrder(categoryItems) {
         .eq(idField, realId);
     }
 
-    // 👈 Добавляем сохранение времени при изменении порядка
+    // Автоматическое обновление времени при изменении порядка
     const currentTime = getFormattedTimestamp();
-   await saveGlobalLastUpdate(currentTime);
+    await saveGlobalLastUpdate(currentTime);
 
   } catch (err) {
     console.error('Ошибка сохранения порядка:', err);
@@ -494,7 +491,7 @@ async function saveAllCategoryOrder(categoryItems) {
 
   loadInventory();
 }
-// Изменение количества (+ / -)
+
 async function updateQty(id, delta) {
   if (!supabaseClient) return;
   const item = allProducts.find(p => String(p.id) === String(id) || String(p.product_id) === String(id));
@@ -502,7 +499,7 @@ async function updateQty(id, delta) {
 
   const currentQty = parseFloat(item.quantity) || 0;
   const newQty = Math.max(0, Number((currentQty + delta).toFixed(2)));
-  const currentTime = getFormattedTimestamp(); // Генерируем актуальное время
+  const currentTime = getFormattedTimestamp();
   const idField = item.product_id !== undefined ? 'product_id' : 'id';
 
   const { error } = await supabaseClient
@@ -514,7 +511,7 @@ async function updateQty(id, delta) {
     .eq(idField, id);
 
   if (!error) {
-    await saveGlobalLastUpdate(currentTime); // 👈 ВОТ ЭТУ СТРОКУ НУЖНО ДОБАВИТЬ
+    await saveGlobalLastUpdate(currentTime); // Автоматическое обновление времени
     loadInventory();
   }
 }
@@ -534,14 +531,15 @@ async function deleteProduct(id) {
     .eq(idField, id);
 
   if (!error) {
-    // 👈 Добавляем сохранение времени при удалении
     const currentTime = getFormattedTimestamp();
-    await saveGlobalLastUpdate(currentTime);
-    
+    await saveGlobalLastUpdate(currentTime); // Автоматическое обновление времени
     loadInventory();
   }
 }
 
+// ==========================================
+// Инициализация страницы и слушатели событий
+// ==========================================
 document.addEventListener('DOMContentLoaded', () => {
   syncCategorySelectOptions();
   const tabMaterialsBtn = document.getElementById('tab-materials');
@@ -577,7 +575,6 @@ document.addEventListener('DOMContentLoaded', () => {
     renderInventory(allProducts);
   }
 
-
   if (tabMaterialsBtn) tabMaterialsBtn.addEventListener('click', () => switchTab('materials'));
   if (tabBoxesBtn) tabBoxesBtn.addEventListener('click', () => switchTab('boxes'));
 
@@ -607,7 +604,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Глобальная кнопка обновления — сохраняет время в Supabase для всех устройств
   const globalRefreshBtn = document.getElementById('global-refresh-btn');
   if (globalRefreshBtn) {
     globalRefreshBtn.addEventListener('click', async () => {
@@ -634,7 +630,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Escape') closeModal();
   });
 
-   const exportBtn = document.getElementById('export-excel-btn');
+  const exportBtn = document.getElementById('export-excel-btn');
   if (exportBtn) {
     exportBtn.addEventListener('click', () => {
       if (!allProducts || allProducts.length === 0) {
@@ -645,7 +641,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const { map, sortedKeys } = getSortedCategoriesMap(allProducts);
       let globalIndex = 1;
 
-      // Цвета шапок блоков в Excel под стиль вашего сайта
       const EXCEL_BLOCK_COLORS = {
         'Task is 50% Done': { headerBg: '#fef3c7', headerText: '#78350f', border: '#fcd34d' },
         'Endpaper':         { headerBg: '#dbeafe', headerText: '#1e3a8a', border: '#93c5fd' },
@@ -664,8 +659,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (categoryItems.length === 0) continue;
 
         const colors = EXCEL_BLOCK_COLORS[catKey] || EXCEL_BLOCK_COLORS['Other'];
-
-             // Каждый блок — это отдельная самостоятельная таблица с отступом снизу
         const isBoxesExcel = catKey === BOXES_CATEGORY;
         const boxColors = { headerBg: '#ccfbf1', headerText: '#115e59', border: '#5eead4' };
         const activeColors = isBoxesExcel ? boxColors : colors;
@@ -700,7 +693,6 @@ document.addEventListener('DOMContentLoaded', () => {
           const isPureNumber = /^-?\d+(\.\d+)?$/.test(rawQtyStr);
           const displayUnit = isPureNumber ? (item.unit || 'pcs') : '—';
 
-          // Подсветка красным в Excel, если остаток на минимуме (0 или ниже)
           const numericQty = parseFloat(rawQtyStr);
           const minThreshold = (item.min_stock !== null && item.min_stock !== undefined) ? Number(item.min_stock) : 0;
           const isLowStock = !isNaN(numericQty) && numericQty <= minThreshold;
@@ -799,7 +791,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const forcedTime = form.dataset.forcedTimestamp;
       const nowStr = forcedTime || getFormattedTimestamp();
 
-      // Поддержка как чисел ("500"), так и комбинированного текста ("500pcs + 5cm" или "100pcs 50cm")
       const rawQtyInput = document.getElementById('product-quantity').value.trim();
       const normalizedNumberStr = rawQtyInput.replace(',', '.');
       const parsedQuantity = /^-?\d+(\.\d+)?$/.test(normalizedNumberStr)
@@ -848,7 +839,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
-      await saveGlobalLastUpdate(nowStr);
+      await saveGlobalLastUpdate(nowStr); // Автоматическое обновление времени при сохранении формы
       closeModal();
       loadInventory();
     });
